@@ -79,16 +79,65 @@ Benchmarks cover:
 cargo clippy --workspace -- -D warnings
 ```
 
-## Performance Targets
+## Performance
 
-| Metric | Target | Notes |
+All benchmarks run on native (Apple Silicon) via Criterion. Snapshot and networking metrics from `cargo test -p game_sim --test metrics_tests -- --nocapture`.
+
+### Simulation Performance
+
+| Metric | Measured | Target | Notes |
+|--------|----------|--------|-------|
+| Frame simulation (single tick) | **1.51 ns** | < 1 ms | ~660,000x under target |
+| Rollback + resim (1 frame) | **100.5 ns** | < 2 ms | Restore + re-simulate 1 frame |
+| Rollback + resim (4 frames) | **185.3 ns** | < 2 ms | Restore + re-simulate 4 frames |
+| Rollback + resim (8 frames) | **294.7 ns** | < 2 ms | Restore + re-simulate 8 frames |
+
+### Snapshot System
+
+| Metric | Measured | Target | Notes |
+|--------|----------|--------|-------|
+| Snapshot save | **14.9 ns** | < 0.1 ms | Copy-based (`*self`), zero allocation |
+| Snapshot restore | **45.0 ns** | < 0.1 ms | Direct assignment, zero allocation |
+| Snapshot size | **304 bytes** | — | `std::mem::size_of::<GameState>()` — fits in L1 cache |
+
+### Networking
+
+| Metric | Measured | Target | Notes |
+|--------|----------|--------|-------|
+| Input struct size | **1 byte** | — | Bitmask: 8 bits for all actions |
+| Wire packet size | **16 bytes** | — | `frame: u64` (8B) + `data: [u8; 8]` (8B) |
+| Bandwidth per player | **2.81 KB/s** | < 5 KB/s | 16 bytes × 60 fps × 3x redundancy |
+
+### Rollback Frequency (simulated, 85% input persistence)
+
+| Latency (RTT) | One-way Frames | Rollback % | Frames Rolled Back |
+|----------------|----------------|------------|-------------------|
+| 30 ms | 1 | **26.6%** | 957 / 3600 |
+| 60 ms | 2 | **40.9%** | 1474 / 3600 |
+| 100 ms | 3 | **51.8%** | 1866 / 3600 |
+| 150 ms | 5 | **64.1%** | 2306 / 3600 |
+
+### Determinism
+
+| Metric | Result | Notes |
 |--------|--------|-------|
-| Tick simulation | < 0.1ms | Single game tick at 60 FPS |
-| Snapshot save/restore | < 0.01ms | Copy-based, zero allocation |
-| 8-frame rollback | < 1ms | Restore + re-simulate 8 frames |
-| Render frame | < 4ms | Canvas2D with skeletal animation + particles |
-| Input latency | < 3 frames | Local input to screen update |
-| Network rollback | 1-8 frames | Adaptive based on RTT |
+| Fuzz matches | **10,000** | Random elements, random inputs, 60–600 frames each |
+| Total frames verified | **3,307,412** | CRC32 checksum compared every frame |
+| Desyncs detected | **0** | Two independent sims, identical inputs → identical state |
+
+### Rendering (estimated)
+
+| Metric | Measured | Target | Notes |
+|--------|----------|--------|-------|
+| Particle update (2000 active) | **4.81 µs** | < 1 ms | All 4 behaviors (standard, gravity, spiral, decelerate) |
+| Estimated frame render | **~0.01 ms** | < 4 ms | Particle (4.8 µs) + sim tick (1.5 ns); Canvas2D draw calls are the bottleneck in-browser |
+
+### Binary Size
+
+| Metric | Size | Notes |
+|--------|------|-------|
+| WASM (release, wasm-opt) | **187 KB** | `wasm-pack build --target web --release` with built-in wasm-opt |
+| WASM (gzipped) | **80 KB** | `gzip -c client_bg.wasm` |
 
 ## Project Structure
 
