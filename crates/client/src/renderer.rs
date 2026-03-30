@@ -13,6 +13,7 @@ pub fn render_frame(
     ctx: &CanvasRenderingContext2d,
     state: &GameState,
     anim_states: &[AnimationState; 2],
+    hit_flash: &[i32; 2],
 ) {
     // Clear
     ctx.set_fill_style_str("#0a0a12");
@@ -32,7 +33,8 @@ pub fn render_frame(
             &anim,
             anim_state.frame,
         );
-        draw_character(ctx, p, &skeleton, facing);
+        let flash = hit_flash[i] > 0;
+        draw_character(ctx, p, &skeleton, facing, flash);
     }
 
     // UI
@@ -42,6 +44,7 @@ pub fn render_frame(
     draw_energy_bar(ctx, state.players[1].energy, CANVAS_W as f32 - 30.0, 55.0, true);
     draw_timer(ctx, state.round_timer);
     draw_round_counter(ctx, &state.round_scores);
+    draw_combo_counter(ctx, state);
 }
 
 fn draw_background(ctx: &CanvasRenderingContext2d) {
@@ -76,8 +79,10 @@ fn draw_character(
     player: &PlayerState,
     skeleton: &Skeleton,
     facing: f32,
+    flash: bool,
 ) {
-    let color = element_color(player.element);
+    let base_color = element_color(player.element);
+    let color = if flash { "#ffffff" } else { base_color };
     let joints = &skeleton.joints;
 
     // Silhouette outline path
@@ -115,7 +120,8 @@ fn draw_character(
         ctx.line_to(joints[idx].x as f64, joints[idx].y as f64);
     }
     ctx.close_path();
-    ctx.set_fill_style_str("#0a0a0a");
+    let fill_color = if flash { "#333333" } else { "#0a0a0a" };
+    ctx.set_fill_style_str(fill_color);
     ctx.fill();
 
     // Skeleton bones
@@ -271,4 +277,18 @@ pub fn draw_round_counter(ctx: &CanvasRenderingContext2d, scores: &[i32; 2]) {
     ctx.set_text_align("right");
     let p2 = format!("P2: {}", scores[1]);
     let _ = ctx.fill_text(&p2, CANVAS_W - 30.0, 85.0);
+}
+
+pub fn draw_combo_counter(ctx: &CanvasRenderingContext2d, state: &GameState) {
+    for (i, combo) in state.combo.iter().enumerate() {
+        if combo.hit_count > 1 {
+            let x = if i == 0 { 150.0 } else { CANVAS_W - 150.0 };
+            let align = if i == 0 { "left" } else { "right" };
+            ctx.set_text_align(align);
+            ctx.set_fill_style_str("#ffcc00");
+            ctx.set_font("bold 24px monospace");
+            let text = format!("{} HITS!", combo.hit_count);
+            let _ = ctx.fill_text(&text, x, CANVAS_H - 50.0);
+        }
+    }
 }

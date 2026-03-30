@@ -6,7 +6,7 @@ use web_sys::CanvasRenderingContext2d;
 use game_sim::input::Input;
 use game_sim::player::{Element, PlayerAction};
 use game_sim::ring_buffer::RingBuffer;
-use game_sim::GameState;
+use game_sim::{GamePhase, GameState};
 
 pub mod animation;
 pub mod input_handler;
@@ -55,22 +55,18 @@ impl RollbackManager {
         }
     }
 
-    /// Save a snapshot of the game state at the given frame.
     pub fn save_snapshot(&mut self, frame: u64, state: &GameState) {
         self.snapshots.write(frame, *state);
     }
 
-    /// Retrieve a snapshot for the given frame, if still in the ring buffer.
     pub fn get_snapshot(&self, frame: u64) -> Option<&GameState> {
         self.snapshots.read(frame)
     }
 
-    /// Record local (P1) input for a frame.
     pub fn record_p1_input(&mut self, frame: u64, input: Input) {
         self.p1_inputs.write(frame, input);
     }
 
-    /// Record confirmed remote (P2) input for a frame.
     pub fn record_p2_input(&mut self, frame: u64, input: Input) {
         self.p2_inputs.write(frame, input);
         if frame > self.last_confirmed_p2_frame {
@@ -79,13 +75,10 @@ impl RollbackManager {
         }
     }
 
-    /// Predict remote input for a frame: repeat last confirmed input.
     pub fn predict_remote_input(&self, _frame: u64) -> Input {
         self.predicted_p2_input
     }
 
-    /// Check if rollback is needed: the actual input differs from the prediction
-    /// that was used for that frame.
     pub fn needs_rollback(&self, frame: u64, actual_input: Input) -> bool {
         match self.p2_inputs.read(frame) {
             Some(&predicted) => predicted != actual_input,
@@ -93,8 +86,6 @@ impl RollbackManager {
         }
     }
 
-    /// Perform a rollback: restore state at from_frame, then re-simulate
-    /// forward to current_frame using corrected inputs.
     pub fn perform_rollback(
         &mut self,
         game: &mut GameState,
@@ -103,33 +94,23 @@ impl RollbackManager {
         p1_inputs: &[Input],
         corrected_p2_input: Input,
     ) {
-        // Restore snapshot
         if let Some(snapshot) = self.snapshots.read(from_frame) {
             game.restore_snapshot(*snapshot);
         }
-
-        // Write corrected P2 input for the rollback frame
         self.p2_inputs.write(from_frame, corrected_p2_input);
-
-        // Re-simulate from from_frame to current_frame
         for frame in from_frame..current_frame {
             let idx = (frame - from_frame) as usize;
             let p1 = if idx < p1_inputs.len() {
                 p1_inputs[idx]
             } else {
-                self.p1_inputs
-                    .read(frame)
-                    .copied()
-                    .unwrap_or(Input(0))
+                self.p1_inputs.read(frame).copied().unwrap_or(Input(0))
             };
-            let p2 = self.p2_inputs
+            let p2 = self
+                .p2_inputs
                 .read(frame)
                 .copied()
                 .unwrap_or(self.predicted_p2_input);
-
             game.tick(p1, p2);
-
-            // Save updated snapshots as we re-simulate
             self.snapshots.write(frame + 1, *game);
         }
     }
@@ -144,6 +125,15 @@ pub struct ShadowStrike {
     last_tick: f64,
     tick_accumulator: f64,
     prev_actions: [AnimId; 2],
+    // Online multiplayer state
+    net: Option<networking::NetworkManager>,
+    rollback: Option<RollbackManager>,
+    is_online: bool,
+    local_player: u8, // 1 or 2
+    // Visual effects
+    hit_flash_frames: [i32; 2],
+    screen_shake_frames: i32,
+    screen_shake_intensity: f64,
 }
 
 #[wasm_bindgen]
@@ -152,14 +142,81 @@ impl ShadowStrike {
     pub fn new(p1_element: u8, p2_element: u8) -> Self {
         let e1 = element_from_u8(p1_element);
         let e2 = element_from_u8(p2_element);
+        let state = GameState::new(e1, e2);
         ShadowStrike {
-            game_state: GameState::new(e1, e2),
+            game_state: state,
             anim_states: [AnimationState::new(), AnimationState::new()],
             particles: ParticlePool::new(),
             keys: HashSet::new(),
             last_tick: 0.0,
             tick_accumulator: 0.0,
             prev_actions: [AnimId::Idle; 2],
+            net: None,
+            rollback: None,
+            is_online: false,
+            local_player: 1,
+            hit_flash_frames: [0; 2],
+            screen_shake_frames: 0,
+            screen_shake_intensity: 0.0,
+        }
+    }
+
+    /// Get the NetworkManager for JS to configure callbacks.
+    pub fn get_network_manager(&mut self) -> networking::NetworkManager {
+        networking::NetworkManager::new()
+    }
+
+    /// Start online mode: create a room.
+    pub fn create_online_room(&mut self, ws_url: &str) {
+        let mut net = networking::NetworkManager::new();
+        net.create_room(ws_url);
+        self.is_online = true;
+        self.local_player = 1;
+        let rm = RollbackManager::new(&self.game_state);
+        self.rollback = Some(rm);
+        self.net = Some(net);
+    }
+
+    /// Start online mode: join a room.
+    pub fn join_online_room(&mut self, ws_url: &str, room_code: &str) {
+        let mut net = networking::NetworkManager::new();
+        net.join_room(ws_url, room_code);
+        self.is_online = true;
+        self.local_player = 2;
+        let rm = RollbackManager::new(&self.game_state);
+        self.rollback = Some(rm);
+        self.net = Some(net);
+    }
+
+    /// Get network mode (0=local, 1=connecting, 3=relay, 4=disconnected)
+    pub fn network_mode(&self) -> u8 {
+        self.net.as_ref().map(|n| n.mode()).unwrap_or(0)
+    }
+
+    /// Get room code if available
+    pub fn room_code(&self) -> Option<String> {
+        self.net.as_ref().and_then(|n| n.room_code())
+    }
+
+    /// Set JS callbacks on the internal network manager.
+    pub fn set_on_room_created(&self, cb: js_sys::Function) {
+        if let Some(ref net) = self.net {
+            net.set_on_room_created(cb);
+        }
+    }
+    pub fn set_on_room_joined(&self, cb: js_sys::Function) {
+        if let Some(ref net) = self.net {
+            net.set_on_room_joined(cb);
+        }
+    }
+    pub fn set_on_peer_joined(&self, cb: js_sys::Function) {
+        if let Some(ref net) = self.net {
+            net.set_on_peer_joined(cb);
+        }
+    }
+    pub fn set_on_net_error(&self, cb: js_sys::Function) {
+        if let Some(ref net) = self.net {
+            net.set_on_error(cb);
         }
     }
 
@@ -169,6 +226,31 @@ impl ShadowStrike {
 
     pub fn key_up(&mut self, key: String) {
         self.keys.remove(&key);
+    }
+
+    /// Get game phase as string for JS UI overlays.
+    pub fn phase_info(&self) -> String {
+        match self.game_state.phase {
+            GamePhase::Fighting => "fighting".to_string(),
+            GamePhase::RoundEnd { winner, countdown } => {
+                format!("round_end:{}:{}", winner, countdown)
+            }
+            GamePhase::MatchEnd { winner } => {
+                format!("match_end:{}", winner)
+            }
+        }
+    }
+
+    pub fn round_number(&self) -> i32 {
+        self.game_state.round_number
+    }
+
+    pub fn p1_health(&self) -> i32 {
+        self.game_state.players[0].health
+    }
+
+    pub fn p2_health(&self) -> i32 {
+        self.game_state.players[1].health
     }
 
     /// Called by requestAnimationFrame — timestamp in ms from performance.now().
@@ -181,7 +263,6 @@ impl ShadowStrike {
         let mut dt = timestamp - self.last_tick;
         self.last_tick = timestamp;
 
-        // Clamp to avoid spiral of death
         if dt > 200.0 {
             dt = 200.0;
         }
@@ -190,60 +271,153 @@ impl ShadowStrike {
 
         while self.tick_accumulator >= TICK_DT {
             self.tick_accumulator -= TICK_DT;
+            self.run_game_tick();
+        }
+    }
 
-            let p1_input = input_handler::read_p1_input(&self.keys);
-            let p2_input = input_handler::read_p2_input(&self.keys);
+    fn run_game_tick(&mut self) {
+        let frame = self.game_state.frame_number;
 
-            self.game_state.tick(p1_input, p2_input);
+        // Read local inputs
+        let local_input = if self.local_player == 2 {
+            input_handler::read_p2_input(&self.keys)
+        } else {
+            input_handler::read_p1_input(&self.keys)
+        };
 
-            // Update animation states from game state
-            for i in 0..2 {
-                let action = &self.game_state.players[i].action;
-                let anim_id = AnimId::from_action(action);
-                self.anim_states[i].set(anim_id);
-                let anim = get_animation(anim_id);
-                self.anim_states[i].advance(&anim);
+        let (p1_input, p2_input) = if self.is_online {
+            // Online mode: send local input, receive/predict remote
+            if let Some(ref net) = self.net {
+                net.send_input(frame, local_input.0);
+            }
 
-                // Emit particles on action changes
-                let prev = self.prev_actions[i];
-                if anim_id != prev {
-                    let px = self.game_state.players[i].x.to_f32();
-                    let py = self.game_state.players[i].y.to_f32();
-                    let elem = self.game_state.players[i].element;
-
-                    match action {
-                        PlayerAction::LightAttack1
-                        | PlayerAction::LightAttack2
-                        | PlayerAction::LightAttack3
-                        | PlayerAction::HeavyAttack
-                        | PlayerAction::Uppercut
-                        | PlayerAction::AerialAttack => {
-                            self.particles.emit(px, py - 30.0, elem, EffectType::SwordTrail);
+            // Poll for remote inputs
+            let remote_input = if let Some(ref mut net) = self.net {
+                let mut last_input = None;
+                while let Some(data) = net.poll_input() {
+                    if data.len() >= 9 {
+                        let remote_frame =
+                            u64::from_be_bytes([data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]]);
+                        let bits = data[8];
+                        if let Some(ref mut rm) = self.rollback {
+                            if self.local_player == 1 {
+                                rm.record_p2_input(remote_frame, Input(bits));
+                            } else {
+                                rm.record_p1_input(remote_frame, Input(bits));
+                            }
                         }
-                        PlayerAction::Hitstun { .. } => {
-                            self.particles.emit(px, py - 30.0, elem, EffectType::HitImpact);
-                        }
-                        PlayerAction::WalkForward | PlayerAction::WalkBack => {
-                            self.particles.emit(px, py, elem, EffectType::WalkDust);
-                        }
-                        _ => {}
+                        last_input = Some(Input(bits));
                     }
                 }
-                self.prev_actions[i] = anim_id;
-            }
+                last_input
+            } else {
+                None
+            };
 
-            // Idle ambient particles (occasional)
-            if self.game_state.frame_number.is_multiple_of(15) {
-                for i in 0..2 {
-                    let px = self.game_state.players[i].x.to_f32();
-                    let py = self.game_state.players[i].y.to_f32();
-                    let elem = self.game_state.players[i].element;
-                    self.particles.emit(px, py - 40.0, elem, EffectType::IdleAmbient);
+            // Save snapshot and record local input
+            if let Some(ref mut rm) = self.rollback {
+                rm.save_snapshot(frame, &self.game_state);
+                if self.local_player == 1 {
+                    rm.record_p1_input(frame, local_input);
+                } else {
+                    rm.record_p2_input(frame, local_input);
                 }
             }
 
-            self.particles.update(1.0 / 60.0);
+            let predicted = remote_input.unwrap_or_else(|| {
+                self.rollback
+                    .as_ref()
+                    .map(|rm| rm.predict_remote_input(frame))
+                    .unwrap_or(Input(0))
+            });
+
+            if self.local_player == 1 {
+                (local_input, predicted)
+            } else {
+                (predicted, local_input)
+            }
+        } else {
+            // Local mode: both players on same keyboard
+            let p1 = input_handler::read_p1_input(&self.keys);
+            let p2 = input_handler::read_p2_input(&self.keys);
+            (p1, p2)
+        };
+
+        // Store health before tick for hit detection
+        let health_before = [
+            self.game_state.players[0].health,
+            self.game_state.players[1].health,
+        ];
+
+        self.game_state.tick(p1_input, p2_input);
+
+        // Detect hits for visual effects
+        for (i, &prev_hp) in health_before.iter().enumerate() {
+            if self.game_state.players[i].health < prev_hp {
+                self.hit_flash_frames[i] = 6;
+                self.screen_shake_frames = 4;
+                let damage = prev_hp - self.game_state.players[i].health;
+                self.screen_shake_intensity = (damage as f64 / 100.0).clamp(2.0, 8.0);
+            }
         }
+
+        // Decay visual effects
+        for i in 0..2 {
+            if self.hit_flash_frames[i] > 0 {
+                self.hit_flash_frames[i] -= 1;
+            }
+        }
+        if self.screen_shake_frames > 0 {
+            self.screen_shake_frames -= 1;
+        }
+
+        // Update animation states from game state
+        for i in 0..2 {
+            let action = &self.game_state.players[i].action;
+            let anim_id = AnimId::from_action(action);
+            self.anim_states[i].set(anim_id);
+            let anim = get_animation(anim_id);
+            self.anim_states[i].advance(&anim);
+
+            // Emit particles on action changes
+            let prev = self.prev_actions[i];
+            if anim_id != prev {
+                let px = self.game_state.players[i].x.to_f32();
+                let py = self.game_state.players[i].y.to_f32();
+                let elem = self.game_state.players[i].element;
+
+                match action {
+                    PlayerAction::LightAttack1
+                    | PlayerAction::LightAttack2
+                    | PlayerAction::LightAttack3
+                    | PlayerAction::HeavyAttack
+                    | PlayerAction::Uppercut
+                    | PlayerAction::AerialAttack => {
+                        self.particles.emit(px, py - 30.0, elem, EffectType::SwordTrail);
+                    }
+                    PlayerAction::Hitstun { .. } => {
+                        self.particles.emit(px, py - 30.0, elem, EffectType::HitImpact);
+                    }
+                    PlayerAction::WalkForward | PlayerAction::WalkBack => {
+                        self.particles.emit(px, py, elem, EffectType::WalkDust);
+                    }
+                    _ => {}
+                }
+            }
+            self.prev_actions[i] = anim_id;
+        }
+
+        // Idle ambient particles (occasional)
+        if self.game_state.frame_number.is_multiple_of(15) {
+            for i in 0..2 {
+                let px = self.game_state.players[i].x.to_f32();
+                let py = self.game_state.players[i].y.to_f32();
+                let elem = self.game_state.players[i].element;
+                self.particles.emit(px, py - 40.0, elem, EffectType::IdleAmbient);
+            }
+        }
+
+        self.particles.update(1.0 / 60.0);
     }
 
     pub fn render(&self, canvas_id: &str) {
@@ -263,7 +437,91 @@ impl ShadowStrike {
             .dyn_into::<CanvasRenderingContext2d>()
             .expect("not CanvasRenderingContext2d");
 
-        renderer::render_frame(&ctx, &self.game_state, &self.anim_states);
+        // Apply screen shake
+        if self.screen_shake_frames > 0 {
+            let intensity = self.screen_shake_intensity;
+            let frame_seed = self.game_state.frame_number as f64;
+            let ox = (frame_seed * 7.3).sin() * intensity;
+            let oy = (frame_seed * 11.7).cos() * intensity;
+            ctx.save();
+            ctx.translate(ox, oy).ok();
+        }
+
+        renderer::render_frame(
+            &ctx,
+            &self.game_state,
+            &self.anim_states,
+            &self.hit_flash_frames,
+        );
         self.particles.render(&ctx);
+
+        // Draw game phase overlays
+        self.render_phase_overlay(&ctx);
+
+        if self.screen_shake_frames > 0 {
+            ctx.restore();
+        }
+    }
+
+    fn render_phase_overlay(&self, ctx: &CanvasRenderingContext2d) {
+        let cx = 600.0;
+        let cy = 280.0;
+
+        match self.game_state.phase {
+            GamePhase::Fighting => {
+                // Show "ROUND X" / "FIGHT!" at the start of each round
+                if self.game_state.frame_number < 90 {
+                    let alpha = if self.game_state.frame_number < 60 {
+                        1.0
+                    } else {
+                        1.0 - (self.game_state.frame_number as f64 - 60.0) / 30.0
+                    };
+                    let color = format!("rgba(255,255,255,{:.2})", alpha);
+                    ctx.set_fill_style_str(&color);
+                    ctx.set_font("bold 48px monospace");
+                    ctx.set_text_align("center");
+                    if self.game_state.frame_number < 40 {
+                        let text = format!("ROUND {}", self.game_state.round_number);
+                        let _ = ctx.fill_text(&text, cx, cy);
+                    } else {
+                        let _ = ctx.fill_text("FIGHT!", cx, cy);
+                    }
+                }
+            }
+            GamePhase::RoundEnd { winner, countdown } => {
+                ctx.set_font("bold 56px monospace");
+                ctx.set_text_align("center");
+
+                // "KO!" flash
+                if countdown > 80 {
+                    ctx.set_fill_style_str("#ff3333");
+                    let _ = ctx.fill_text("K.O.!", cx, cy);
+                } else {
+                    let winner_text = format!("Player {} wins the round!", winner + 1);
+                    ctx.set_fill_style_str("#ffffff");
+                    ctx.set_font("bold 36px monospace");
+                    let _ = ctx.fill_text(&winner_text, cx, cy);
+                }
+            }
+            GamePhase::MatchEnd { winner } => {
+                // Darken background
+                ctx.set_fill_style_str("rgba(0,0,0,0.6)");
+                ctx.fill_rect(0.0, 0.0, 1200.0, 600.0);
+
+                ctx.set_font("bold 64px monospace");
+                ctx.set_text_align("center");
+                ctx.set_fill_style_str("#ffd700");
+                let _ = ctx.fill_text("MATCH OVER", cx, cy - 40.0);
+
+                ctx.set_font("bold 40px monospace");
+                ctx.set_fill_style_str("#ffffff");
+                let winner_text = format!("Player {} Wins!", winner + 1);
+                let _ = ctx.fill_text(&winner_text, cx, cy + 30.0);
+
+                ctx.set_font("24px monospace");
+                ctx.set_fill_style_str("#888888");
+                let _ = ctx.fill_text("Refresh to play again", cx, cy + 80.0);
+            }
+        }
     }
 }

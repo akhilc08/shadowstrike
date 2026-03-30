@@ -23,6 +23,8 @@ features = [
     "Performance",
     "WebSocket",
     "MessageEvent",
+    "ErrorEvent",
+    "CloseEvent",
     "BinaryType",
     "console",
 ]
