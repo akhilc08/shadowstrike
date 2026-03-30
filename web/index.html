@@ -95,6 +95,7 @@
   .char-card:hover { border-color: #444; background: #0f0f1a; }
   .char-card.selected-fire { border-color: #ff6600; box-shadow: 0 0 15px rgba(255,102,0,0.2); }
   .char-card.selected-lightning { border-color: #88ccff; box-shadow: 0 0 15px rgba(100,180,255,0.2); }
+  .char-card.selected-darkmagic { border-color: #9900ff; box-shadow: 0 0 15px rgba(153,0,255,0.2); }
 
   .char-card .char-name {
     font-size: 1rem;
@@ -510,6 +511,18 @@
               <div><span class="move-name">Thunder Dash</span> <span class="move-input">&rarr;+C</span></div>
             </div>
           </div>
+          <div class="char-card" data-char="umbra">
+            <div class="char-preview"><canvas id="preview-p1-umbra" width="200" height="120"></canvas></div>
+            <div class="char-name" style="color:#9900ff">UMBRA</div>
+            <div class="char-element">Dark Magic Element</div>
+            <div class="move-list">
+              <div><span class="move-name">Light Chain</span> <span class="move-input">Z Z Z</span></div>
+              <div><span class="move-name">Heavy Slash</span> <span class="move-input">X</span></div>
+              <div><span class="move-name">Uppercut</span> <span class="move-input">C</span></div>
+              <div><span class="move-name">Shadow Surge</span> <span class="move-input">&darr;+C</span></div>
+              <div><span class="move-name">Void Dash</span> <span class="move-input">&rarr;+C</span></div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -539,6 +552,18 @@
               <div><span class="move-name">Uppercut</span> <span class="move-input">L</span></div>
               <div><span class="move-name">Bolt Shot</span> <span class="move-input">&darr;+L</span></div>
               <div><span class="move-name">Thunder Dash</span> <span class="move-input">&rarr;+L</span></div>
+            </div>
+          </div>
+          <div class="char-card" data-char="umbra">
+            <div class="char-preview"><canvas id="preview-p2-umbra" width="200" height="120"></canvas></div>
+            <div class="char-name" style="color:#9900ff">UMBRA</div>
+            <div class="char-element">Dark Magic Element</div>
+            <div class="move-list">
+              <div><span class="move-name">Light Chain</span> <span class="move-input">J J J</span></div>
+              <div><span class="move-name">Heavy Slash</span> <span class="move-input">K</span></div>
+              <div><span class="move-name">Uppercut</span> <span class="move-input">L</span></div>
+              <div><span class="move-name">Shadow Surge</span> <span class="move-input">&darr;+L</span></div>
+              <div><span class="move-name">Void Dash</span> <span class="move-input">&rarr;+L</span></div>
             </div>
           </div>
         </div>
@@ -589,10 +614,12 @@
         <tr><td>Block</td><td>V</td><td>;</td></tr>
       </table>
       <div class="htp-section">
-        <strong>Special Moves</strong> (cost 30 energy):<br>
-        Down + Special (P1: S+C &middot; P2: &darr;+L) = Fireball (projectile)<br>
-        Forward + Special (P1: D+C &middot; P2: &rarr;+L) = Dash Strike (gap closer)<br>
-        Special alone (P1: C &middot; P2: L) = Uppercut (free, no energy cost)
+        <strong>Special Moves</strong> (cost energy):<br>
+        Down + Special = Projectile (30 energy)<br>
+        &nbsp;&nbsp; <span style="color:#ff6600">Inferno:</span> Fireball &middot; <span style="color:#88ccff">Voltaic:</span> Bolt Shot &middot; <span style="color:#9900ff">Umbra:</span> Shadow Surge (slower, 70 dmg, slows opponent)<br>
+        Forward + Special = Dash (25-30 energy)<br>
+        &nbsp;&nbsp; <span style="color:#ff6600">Inferno:</span> Flame Rush &middot; <span style="color:#88ccff">Voltaic:</span> Thunder Dash &middot; <span style="color:#9900ff">Umbra:</span> Void Dash (teleport behind, 75 dmg)<br>
+        Special alone = Uppercut (free, no energy cost)
       </div>
       <div class="htp-section">
         <strong>Combos:</strong> Chain light attacks (Z/J x3), cancel into heavy or specials.<br>
@@ -609,7 +636,7 @@
     <span id="controls-local">
       P1: WASD move &middot; Z light &middot; X heavy &middot; C special &middot; V block<br>
       P2: Arrows move &middot; J light &middot; K heavy &middot; L special &middot; ; block<br>
-      Special moves: &darr;+Special = Fireball &middot; &rarr;+Special = Dash Strike &middot; Special alone = Uppercut (30 energy, Uppercut free) &middot; F1 = Debug
+      Special moves: &darr;+Special = Projectile &middot; &rarr;+Special = Dash/Teleport &middot; Special alone = Uppercut (costs energy, Uppercut free) &middot; F1 = Debug
     </span>
     <span id="controls-online" style="display:none">
       WASD move &middot; Z light &middot; X heavy &middot; C special &middot; V block<br>
@@ -627,7 +654,7 @@
     let wasmReady = false;
 
     // Character -> element mapping
-    const CHAR_ELEMENT = { inferno: 0, voltaic: 1 };
+    const CHAR_ELEMENT = { inferno: 0, voltaic: 1, umbra: 2 };
 
     // Default relay URL: use wss:// on deployed fly.dev, fallback to local for development
     const RELAY_WS = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
@@ -722,8 +749,10 @@
       const scale = 1.1;
       const f = facing || 1;
 
-      const color = charType === 'inferno' ? '#ff6600' : '#88ccff';
-      const glow = charType === 'inferno' ? 'rgba(255,102,0,0.35)' : 'rgba(100,180,255,0.35)';
+      const colorMap = { inferno: '#ff6600', voltaic: '#88ccff', umbra: '#9900ff' };
+      const glowMap = { inferno: 'rgba(255,102,0,0.35)', voltaic: 'rgba(100,180,255,0.35)', umbra: 'rgba(153,0,255,0.35)' };
+      const color = colorMap[charType] || '#ff6600';
+      const glow = glowMap[charType] || 'rgba(255,102,0,0.35)';
 
       // Simple silhouette character
       // Body
@@ -846,7 +875,9 @@
         const py = cy - 30 - (Math.cos(i * 2.3) * 20);
         const alpha = 0.3 + Math.sin(i * 0.8) * 0.2;
         const sz = 1.5 + Math.sin(i * 1.1) * 1;
-        ctx.fillStyle = charType === 'inferno'
+        ctx.fillStyle = charType === 'umbra'
+          ? `rgba(${80+i*12},0,${160+i*15},${alpha})`
+          : charType === 'inferno'
           ? `rgba(255,${80 + i*20},0,${alpha})`
           : `rgba(${100+i*20},${180+i*10},255,${alpha})`;
         ctx.beginPath();
@@ -862,10 +893,11 @@
       cards.forEach(card => {
         card.addEventListener('click', () => {
           cards.forEach(c => {
-            c.classList.remove('selected-fire', 'selected-lightning');
+            c.classList.remove('selected-fire', 'selected-lightning', 'selected-darkmagic');
           });
           const charType = card.dataset.char;
-          card.classList.add(charType === 'inferno' ? 'selected-fire' : 'selected-lightning');
+          const selClass = charType === 'inferno' ? 'selected-fire' : charType === 'umbra' ? 'selected-darkmagic' : 'selected-lightning';
+          card.classList.add(selClass);
           setter(charType);
           checkReady();
         });
@@ -878,8 +910,10 @@
     function drawAllPreviews() {
       drawPreview('preview-p1-inferno', 'inferno', 1);
       drawPreview('preview-p1-voltaic', 'voltaic', 1);
+      drawPreview('preview-p1-umbra', 'umbra', 1);
       drawPreview('preview-p2-inferno', 'inferno', -1);
       drawPreview('preview-p2-voltaic', 'voltaic', -1);
+      drawPreview('preview-p2-umbra', 'umbra', -1);
     }
     // Draw previews after a frame to ensure canvases are ready
     requestAnimationFrame(drawAllPreviews);
