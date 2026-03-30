@@ -387,16 +387,27 @@ impl ShadowStrike {
                 let elem = self.game_state.players[i].element;
 
                 match action {
+                    PlayerAction::Uppercut => {
+                        self.particles
+                            .emit(px, py - 30.0, elem, EffectType::SpecialActivation);
+                        self.particles
+                            .emit(px, py - 30.0, elem, EffectType::SwordTrail);
+                    }
                     PlayerAction::LightAttack1
                     | PlayerAction::LightAttack2
                     | PlayerAction::LightAttack3
                     | PlayerAction::HeavyAttack
-                    | PlayerAction::Uppercut
                     | PlayerAction::AerialAttack => {
                         self.particles.emit(px, py - 30.0, elem, EffectType::SwordTrail);
                     }
                     PlayerAction::Hitstun { .. } => {
                         self.particles.emit(px, py - 30.0, elem, EffectType::HitImpact);
+                    }
+                    PlayerAction::Blockstun { .. } => {
+                        self.particles.emit(px, py - 40.0, elem, EffectType::BlockSpark);
+                    }
+                    PlayerAction::Knockdown { .. } => {
+                        self.particles.emit(px, py, elem, EffectType::KnockdownSlam);
                     }
                     PlayerAction::WalkForward | PlayerAction::WalkBack => {
                         self.particles.emit(px, py, elem, EffectType::WalkDust);

@@ -18,6 +18,8 @@ pub enum EffectType {
     IdleAmbient,
     SpecialActivation,
     WalkDust,
+    BlockSpark,
+    KnockdownSlam,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -80,11 +82,13 @@ impl ParticlePool {
 
     pub fn emit(&mut self, x: f32, y: f32, element: Element, effect: EffectType) {
         let count = match effect {
-            EffectType::HitImpact => 20,
-            EffectType::SwordTrail => 3,
+            EffectType::HitImpact => 24,
+            EffectType::SwordTrail => 4,
             EffectType::IdleAmbient => 1,
-            EffectType::SpecialActivation => 30,
+            EffectType::SpecialActivation => 35,
             EffectType::WalkDust => 5,
+            EffectType::BlockSpark => 12,
+            EffectType::KnockdownSlam => 30,
         };
 
         for _ in 0..count {
@@ -95,26 +99,33 @@ impl ParticlePool {
 
             let (r, g, b, behavior) = element_style(element, effect);
             let angle = pseudo_random_angle(x, y, idx as f32);
+            let rng = pseudo_rand(idx as f32);
             let speed = match effect {
-                EffectType::HitImpact => 2.0 + pseudo_rand(idx as f32) * 3.0,
-                EffectType::SwordTrail => 0.3 + pseudo_rand(idx as f32) * 0.5,
-                EffectType::IdleAmbient => 0.2 + pseudo_rand(idx as f32) * 0.3,
-                EffectType::SpecialActivation => 3.0 + pseudo_rand(idx as f32) * 4.0,
-                EffectType::WalkDust => 0.5 + pseudo_rand(idx as f32) * 1.0,
+                EffectType::HitImpact => 2.0 + rng * 3.5,
+                EffectType::SwordTrail => 0.3 + rng * 0.5,
+                EffectType::IdleAmbient => 0.15 + rng * 0.25,
+                EffectType::SpecialActivation => 3.0 + rng * 5.0,
+                EffectType::WalkDust => 0.5 + rng * 1.0,
+                EffectType::BlockSpark => 2.5 + rng * 2.0,
+                EffectType::KnockdownSlam => 1.5 + rng * 3.0,
             };
             let max_life = match effect {
-                EffectType::HitImpact => 15.0 + pseudo_rand(idx as f32) * 10.0,
-                EffectType::SwordTrail => 8.0 + pseudo_rand(idx as f32) * 4.0,
-                EffectType::IdleAmbient => 30.0 + pseudo_rand(idx as f32) * 20.0,
-                EffectType::SpecialActivation => 20.0 + pseudo_rand(idx as f32) * 15.0,
-                EffectType::WalkDust => 10.0 + pseudo_rand(idx as f32) * 5.0,
+                EffectType::HitImpact => 12.0 + rng * 10.0,
+                EffectType::SwordTrail => 6.0 + rng * 4.0,
+                EffectType::IdleAmbient => 40.0 + rng * 30.0,
+                EffectType::SpecialActivation => 20.0 + rng * 15.0,
+                EffectType::WalkDust => 10.0 + rng * 5.0,
+                EffectType::BlockSpark => 6.0 + rng * 6.0,
+                EffectType::KnockdownSlam => 15.0 + rng * 10.0,
             };
             let size = match effect {
-                EffectType::HitImpact => 2.0 + pseudo_rand(idx as f32) * 3.0,
-                EffectType::SwordTrail => 1.0 + pseudo_rand(idx as f32),
-                EffectType::IdleAmbient => 1.0 + pseudo_rand(idx as f32) * 2.0,
-                EffectType::SpecialActivation => 3.0 + pseudo_rand(idx as f32) * 4.0,
-                EffectType::WalkDust => 2.0 + pseudo_rand(idx as f32) * 2.0,
+                EffectType::HitImpact => 2.0 + rng * 3.5,
+                EffectType::SwordTrail => 1.0 + rng * 1.5,
+                EffectType::IdleAmbient => 1.0 + rng * 2.5,
+                EffectType::SpecialActivation => 3.0 + rng * 5.0,
+                EffectType::WalkDust => 2.0 + rng * 2.0,
+                EffectType::BlockSpark => 1.5 + rng * 2.0,
+                EffectType::KnockdownSlam => 2.5 + rng * 3.0,
             };
 
             self.particles[idx] = Particle {
@@ -186,33 +197,72 @@ impl ParticlePool {
             }
             let color = format!("rgba({},{},{},{:.2})", p.r, p.g, p.b, p.a);
             ctx.set_fill_style_str(&color);
-            ctx.fill_rect(
-                (p.x - p.size * 0.5) as f64,
-                (p.y - p.size * 0.5) as f64,
-                p.size as f64,
-                p.size as f64,
-            );
+            // Small particles as squares (faster), larger ones as circles
+            if p.size < 2.5 {
+                ctx.fill_rect(
+                    (p.x - p.size * 0.5) as f64,
+                    (p.y - p.size * 0.5) as f64,
+                    p.size as f64,
+                    p.size as f64,
+                );
+            } else {
+                ctx.begin_path();
+                let _ = ctx.arc(
+                    p.x as f64,
+                    p.y as f64,
+                    (p.size * 0.5) as f64,
+                    0.0,
+                    std::f64::consts::TAU,
+                );
+                ctx.fill();
+            }
         }
     }
 }
 
 fn element_style(element: Element, effect: EffectType) -> (u8, u8, u8, ParticleBehavior) {
+    // Block sparks and knockdown slams are always white/yellow
+    if effect == EffectType::BlockSpark {
+        return (255, 255, 200, ParticleBehavior::Standard);
+    }
+    if effect == EffectType::KnockdownSlam {
+        return (200, 180, 150, ParticleBehavior::GravityAffected);
+    }
+
     match element {
         Element::Fire => {
             let behavior = match effect {
                 EffectType::WalkDust => ParticleBehavior::GravityAffected,
+                EffectType::HitImpact => ParticleBehavior::GravityAffected,
+                EffectType::SpecialActivation => ParticleBehavior::Standard,
                 _ => ParticleBehavior::Standard,
             };
+            // Vary fire colors: orange core, red/yellow edges
             (255, 140, 20, behavior)
         }
         Element::Lightning => {
-            (180, 210, 255, ParticleBehavior::Standard)
+            let behavior = match effect {
+                EffectType::HitImpact | EffectType::SpecialActivation => ParticleBehavior::Standard,
+                _ => ParticleBehavior::Standard,
+            };
+            (180, 210, 255, behavior)
         }
         Element::DarkMagic => {
-            (160, 50, 220, ParticleBehavior::Spiral { angle: 0.0 })
+            let behavior = match effect {
+                EffectType::IdleAmbient | EffectType::SpecialActivation => {
+                    ParticleBehavior::Spiral { angle: 0.0 }
+                }
+                EffectType::HitImpact => ParticleBehavior::Standard,
+                _ => ParticleBehavior::Spiral { angle: 0.0 },
+            };
+            (160, 50, 220, behavior)
         }
         Element::Ice => {
-            (150, 240, 255, ParticleBehavior::DecelerateToStop)
+            let behavior = match effect {
+                EffectType::HitImpact => ParticleBehavior::GravityAffected,
+                _ => ParticleBehavior::DecelerateToStop,
+            };
+            (150, 240, 255, behavior)
         }
     }
 }

@@ -48,21 +48,59 @@ pub fn render_frame(
 }
 
 fn draw_background(ctx: &CanvasRenderingContext2d) {
+    // Sky gradient
     let gradient = ctx.create_linear_gradient(0.0, 0.0, 0.0, GROUND_Y);
-    let _ = gradient.add_color_stop(0.0, "#08081a");
+    let _ = gradient.add_color_stop(0.0, "#06061a");
+    let _ = gradient.add_color_stop(0.5, "#0a0a24");
     let _ = gradient.add_color_stop(1.0, "#141430");
     ctx.set_fill_style_canvas_gradient(&gradient);
     ctx.fill_rect(0.0, 0.0, CANVAS_W, GROUND_Y);
 
-    ctx.set_fill_style_str("#1a1a2e");
+    // Ground with subtle gradient
+    let ground_gradient = ctx.create_linear_gradient(0.0, GROUND_Y, 0.0, CANVAS_H);
+    let _ = ground_gradient.add_color_stop(0.0, "#1a1a2e");
+    let _ = ground_gradient.add_color_stop(1.0, "#0f0f1a");
+    ctx.set_fill_style_canvas_gradient(&ground_gradient);
     ctx.fill_rect(0.0, GROUND_Y, CANVAS_W, CANVAS_H - GROUND_Y);
 
-    ctx.set_stroke_style_str("#333355");
+    // Perspective grid lines on the ground
+    ctx.set_stroke_style_str("rgba(60,60,100,0.15)");
+    ctx.set_line_width(1.0);
+    let vanish_x = CANVAS_W / 2.0;
+    let vanish_y = GROUND_Y - 80.0;
+    for i in 0..12 {
+        let x = (i as f64) * 110.0 - 10.0;
+        ctx.begin_path();
+        ctx.move_to(x, CANVAS_H);
+        ctx.line_to(vanish_x, vanish_y);
+        ctx.stroke();
+    }
+    // Horizontal depth lines
+    for i in 1..5 {
+        let t = i as f64 / 5.0;
+        let y = GROUND_Y + (CANVAS_H - GROUND_Y) * t;
+        ctx.set_stroke_style_str(&format!("rgba(60,60,100,{:.2})", 0.08 + t * 0.1));
+        ctx.begin_path();
+        ctx.move_to(0.0, y);
+        ctx.line_to(CANVAS_W, y);
+        ctx.stroke();
+    }
+
+    // Main ground line (bright)
+    ctx.set_stroke_style_str("#444466");
     ctx.set_line_width(2.0);
     ctx.begin_path();
     ctx.move_to(0.0, GROUND_Y);
     ctx.line_to(CANVAS_W, GROUND_Y);
     ctx.stroke();
+
+    // Subtle glow along ground line
+    let glow = ctx.create_linear_gradient(0.0, GROUND_Y - 3.0, 0.0, GROUND_Y + 3.0);
+    let _ = glow.add_color_stop(0.0, "rgba(80,80,140,0.0)");
+    let _ = glow.add_color_stop(0.5, "rgba(80,80,140,0.15)");
+    let _ = glow.add_color_stop(1.0, "rgba(80,80,140,0.0)");
+    ctx.set_fill_style_canvas_gradient(&glow);
+    ctx.fill_rect(0.0, GROUND_Y - 3.0, CANVAS_W, 6.0);
 }
 
 fn element_color(element: Element) -> &'static str {
