@@ -1,5 +1,4 @@
 use game_sim::player::Element;
-use wasm_bindgen::JsValue;
 use web_sys::CanvasRenderingContext2d;
 
 const POOL_SIZE: usize = 2000;
@@ -54,6 +53,12 @@ pub struct ParticlePool {
     particles: Vec<Particle>,
     free_list: Vec<usize>,
     active: Vec<usize>,
+}
+
+impl Default for ParticlePool {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ParticlePool {
@@ -180,7 +185,7 @@ impl ParticlePool {
                 continue;
             }
             let color = format!("rgba({},{},{},{:.2})", p.r, p.g, p.b, p.a);
-            ctx.set_fill_style(&JsValue::from_str(&color));
+            ctx.set_fill_style_str(&color);
             ctx.fill_rect(
                 (p.x - p.size * 0.5) as f64,
                 (p.y - p.size * 0.5) as f64,
@@ -213,7 +218,7 @@ fn element_style(element: Element, effect: EffectType) -> (u8, u8, u8, ParticleB
 }
 
 fn pseudo_rand(seed: f32) -> f32 {
-    let x = (seed * 12.9898 + 78.233).sin() * 43758.5453;
+    let x = (seed * 12.9898 + 78.233).sin() * 43758.546;
     x - x.floor()
 }
 

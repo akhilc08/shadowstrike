@@ -27,14 +27,10 @@ pub fn check_hit(
     attacker_hitboxes: &[Option<AABB>],
     defender_hurtboxes: &[Option<AABB>],
 ) -> bool {
-    for hit in attacker_hitboxes {
-        if let Some(h) = hit {
-            for hurt in defender_hurtboxes {
-                if let Some(d) = hurt {
-                    if overlaps(h, d) {
-                        return true;
-                    }
-                }
+    for h in attacker_hitboxes.iter().flatten() {
+        for d in defender_hurtboxes.iter().flatten() {
+            if overlaps(h, d) {
+                return true;
             }
         }
     }

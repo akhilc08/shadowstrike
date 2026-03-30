@@ -111,6 +111,12 @@ pub struct AnimationState {
     pub frame: f32,
 }
 
+impl Default for AnimationState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AnimationState {
     pub fn new() -> Self {
         AnimationState {

@@ -1,7 +1,6 @@
 use game_sim::constants::{MAX_ENERGY, MAX_HEALTH, TICKS_PER_SECOND};
 use game_sim::player::{Element, PlayerState};
 use game_sim::GameState;
-use wasm_bindgen::JsValue;
 use web_sys::CanvasRenderingContext2d;
 
 use crate::animation::{compute_skeleton, get_animation, AnimationState, JointId, Skeleton};
@@ -16,22 +15,22 @@ pub fn render_frame(
     anim_states: &[AnimationState; 2],
 ) {
     // Clear
-    ctx.set_fill_style(&JsValue::from_str("#0a0a12"));
+    ctx.set_fill_style_str("#0a0a12");
     ctx.fill_rect(0.0, 0.0, CANVAS_W, CANVAS_H);
 
     draw_background(ctx);
 
     // Draw each player
-    for i in 0..2 {
+    for (i, anim_state) in anim_states.iter().enumerate() {
         let p = &state.players[i];
         let facing = p.facing as f32;
-        let anim = get_animation(anim_states[i].anim_id);
+        let anim = get_animation(anim_state.anim_id);
         let skeleton = compute_skeleton(
             p.x.to_f32(),
             p.y.to_f32(),
             facing,
             &anim,
-            anim_states[i].frame,
+            anim_state.frame,
         );
         draw_character(ctx, p, &skeleton, facing);
     }
@@ -49,18 +48,18 @@ fn draw_background(ctx: &CanvasRenderingContext2d) {
     let gradient = ctx.create_linear_gradient(0.0, 0.0, 0.0, GROUND_Y);
     let _ = gradient.add_color_stop(0.0, "#08081a");
     let _ = gradient.add_color_stop(1.0, "#141430");
-    ctx.set_fill_style(&gradient);
+    ctx.set_fill_style_canvas_gradient(&gradient);
     ctx.fill_rect(0.0, 0.0, CANVAS_W, GROUND_Y);
 
-    ctx.set_fill_style(&JsValue::from_str("#1a1a2e"));
+    ctx.set_fill_style_str("#1a1a2e");
     ctx.fill_rect(0.0, GROUND_Y, CANVAS_W, CANVAS_H - GROUND_Y);
 
-    ctx.set_stroke_style(&JsValue::from_str("#333355"));
+    ctx.set_stroke_style_str("#333355");
     ctx.set_line_width(2.0);
     ctx.begin_path();
     ctx.move_to(0.0, GROUND_Y);
     ctx.line_to(CANVAS_W, GROUND_Y);
-    let _ = ctx.stroke();
+    ctx.stroke();
 }
 
 fn element_color(element: Element) -> &'static str {
@@ -116,11 +115,11 @@ fn draw_character(
         ctx.line_to(joints[idx].x as f64, joints[idx].y as f64);
     }
     ctx.close_path();
-    ctx.set_fill_style(&JsValue::from_str("#0a0a0a"));
-    let _ = ctx.fill();
+    ctx.set_fill_style_str("#0a0a0a");
+    ctx.fill();
 
     // Skeleton bones
-    ctx.set_stroke_style(&JsValue::from_str(color));
+    ctx.set_stroke_style_str(color);
     ctx.set_line_width(2.0);
 
     draw_bone(ctx, joints, JointId::Hips, JointId::Torso);
@@ -145,10 +144,10 @@ fn draw_character(
     let head = &joints[JointId::Head as usize];
     ctx.begin_path();
     let _ = ctx.arc(head.x as f64, head.y as f64, 6.0, 0.0, std::f64::consts::TAU);
-    ctx.set_fill_style(&JsValue::from_str("#0a0a0a"));
-    let _ = ctx.fill();
-    ctx.set_stroke_style(&JsValue::from_str(color));
-    let _ = ctx.stroke();
+    ctx.set_fill_style_str("#0a0a0a");
+    ctx.fill();
+    ctx.set_stroke_style_str(color);
+    ctx.stroke();
 }
 
 fn draw_bone(
@@ -162,7 +161,7 @@ fn draw_bone(
     ctx.begin_path();
     ctx.move_to(a.x as f64, a.y as f64);
     ctx.line_to(b.x as f64, b.y as f64);
-    let _ = ctx.stroke();
+    ctx.stroke();
 }
 
 fn draw_dagger(
@@ -183,12 +182,12 @@ fn draw_dagger(
     let tip_x = w.x + nx * 18.0;
     let tip_y = w.y + ny * 18.0;
 
-    ctx.set_stroke_style(&JsValue::from_str(color));
+    ctx.set_stroke_style_str(color);
     ctx.set_line_width(2.5);
     ctx.begin_path();
     ctx.move_to(w.x as f64, w.y as f64);
     ctx.line_to(tip_x as f64, tip_y as f64);
-    let _ = ctx.stroke();
+    ctx.stroke();
 }
 
 pub fn draw_health_bar(
@@ -205,7 +204,7 @@ pub fn draw_health_bar(
 
     let bx = if flip { x - bar_w } else { x };
 
-    ctx.set_fill_style(&JsValue::from_str("#1a1a1a"));
+    ctx.set_fill_style_str("#1a1a1a");
     ctx.fill_rect(bx as f64, y as f64, bar_w as f64, bar_h as f64);
 
     let fill_w = bar_w * ratio;
@@ -217,10 +216,10 @@ pub fn draw_health_bar(
     } else {
         "#cc3333"
     };
-    ctx.set_fill_style(&JsValue::from_str(health_color));
+    ctx.set_fill_style_str(health_color);
     ctx.fill_rect(fill_x as f64, y as f64, fill_w as f64, bar_h as f64);
 
-    ctx.set_stroke_style(&JsValue::from_str("#555555"));
+    ctx.set_stroke_style_str("#555555");
     ctx.set_line_width(1.0);
     ctx.stroke_rect(bx as f64, y as f64, bar_w as f64, bar_h as f64);
 }
@@ -238,15 +237,15 @@ pub fn draw_energy_bar(
 
     let bx = if flip { x - bar_w } else { x };
 
-    ctx.set_fill_style(&JsValue::from_str("#111111"));
+    ctx.set_fill_style_str("#111111");
     ctx.fill_rect(bx as f64, y as f64, bar_w as f64, bar_h as f64);
 
     let fill_w = bar_w * ratio;
     let fill_x = if flip { bx + bar_w - fill_w } else { bx };
-    ctx.set_fill_style(&JsValue::from_str("#3399ff"));
+    ctx.set_fill_style_str("#3399ff");
     ctx.fill_rect(fill_x as f64, y as f64, fill_w as f64, bar_h as f64);
 
-    ctx.set_stroke_style(&JsValue::from_str("#333333"));
+    ctx.set_stroke_style_str("#333333");
     ctx.set_line_width(1.0);
     ctx.stroke_rect(bx as f64, y as f64, bar_w as f64, bar_h as f64);
 }
@@ -254,7 +253,7 @@ pub fn draw_energy_bar(
 pub fn draw_timer(ctx: &CanvasRenderingContext2d, round_timer: i32) {
     let remaining = (round_timer / TICKS_PER_SECOND).max(0);
 
-    ctx.set_fill_style(&JsValue::from_str("#ffffff"));
+    ctx.set_fill_style_str("#ffffff");
     ctx.set_font("bold 28px monospace");
     ctx.set_text_align("center");
     let text = format!("{}", remaining);
@@ -262,7 +261,7 @@ pub fn draw_timer(ctx: &CanvasRenderingContext2d, round_timer: i32) {
 }
 
 pub fn draw_round_counter(ctx: &CanvasRenderingContext2d, scores: &[i32; 2]) {
-    ctx.set_fill_style(&JsValue::from_str("#aaaaaa"));
+    ctx.set_fill_style_str("#aaaaaa");
     ctx.set_font("16px monospace");
 
     ctx.set_text_align("left");

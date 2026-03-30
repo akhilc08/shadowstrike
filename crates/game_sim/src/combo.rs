@@ -7,6 +7,12 @@ pub struct ComboState {
     pub hitstun_scale: FixedPoint,
 }
 
+impl Default for ComboState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ComboState {
     pub fn new() -> Self {
         ComboState {
