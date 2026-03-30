@@ -156,6 +156,8 @@ pub struct ShadowStrike {
     screen_shake_intensity: f64,
     // Sound state
     bell_played: bool,
+    // Touch input from mobile virtual gamepad
+    touch_input: Input,
 }
 
 #[wasm_bindgen]
@@ -182,6 +184,7 @@ impl ShadowStrike {
             screen_shake_frames: 0,
             screen_shake_intensity: 0.0,
             bell_played: false,
+            touch_input: Input(0),
         }
     }
 
@@ -255,6 +258,12 @@ impl ShadowStrike {
         self.keys.remove(&key);
     }
 
+    /// Set raw input bitmask from touch controls (mobile virtual gamepad).
+    /// Bits: 0=left, 1=right, 2=up, 3=down, 4=light, 5=heavy, 6=special, 7=block
+    pub fn set_touch_input(&mut self, bits: u8) {
+        self.touch_input = Input(bits);
+    }
+
     /// Get game phase as string for JS UI overlays.
     pub fn phase_info(&self) -> String {
         match self.game_state.phase {
@@ -316,8 +325,9 @@ impl ShadowStrike {
         let frame = self.game_state.frame_number;
 
         let (p1_input, p2_input) = if self.is_online {
-            // Online mode: always use WASD (P1 controls) for the local player
-            let local_input = input_handler::read_p1_input(&self.keys);
+            // Online mode: always use WASD (P1 controls) for the local player, merged with touch
+            let kb_input = input_handler::read_p1_input(&self.keys);
+            let local_input = Input(kb_input.0 | self.touch_input.0);
 
             // Send local input to remote peer via relay
             if let Some(ref net) = self.net {
@@ -385,8 +395,9 @@ impl ShadowStrike {
                 (predicted, local_input)
             }
         } else {
-            // Local mode: both players on same keyboard
-            let p1 = input_handler::read_p1_input(&self.keys);
+            // Local mode: both players on same keyboard, P1 also gets touch input
+            let p1_kb = input_handler::read_p1_input(&self.keys);
+            let p1 = Input(p1_kb.0 | self.touch_input.0);
             let p2 = input_handler::read_p2_input(&self.keys);
             (p1, p2)
         };

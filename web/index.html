@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>ShadowStrike</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -214,6 +215,107 @@
   }
   #net-indicator.connected { color: #33cc33; border-color: #33cc33; }
   #net-indicator.p2p { color: #ffcc00; border-color: #ffcc00; }
+
+  /* ── Virtual Gamepad (touch devices only) ── */
+  #touch-gamepad {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 200px;
+    z-index: 100;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+  #touch-gamepad.visible { display: block; }
+
+  /* Left stick zone */
+  .touch-stick-zone {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    width: 150px;
+    height: 150px;
+    pointer-events: auto;
+    touch-action: none;
+  }
+  .touch-stick-base {
+    position: absolute;
+    width: 130px;
+    height: 130px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+    border: 2px solid rgba(255,255,255,0.15);
+    left: 10px;
+    top: 10px;
+  }
+  .touch-stick-knob {
+    position: absolute;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    border: 2px solid rgba(255,255,255,0.35);
+    left: 50px;
+    top: 50px;
+    transition: none;
+  }
+
+  /* Right action buttons */
+  .touch-actions {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    width: 180px;
+    height: 170px;
+    pointer-events: auto;
+    touch-action: none;
+  }
+  .touch-btn {
+    position: absolute;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.6);
+    font-family: inherit;
+    font-size: 0.6rem;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+    touch-action: none;
+    letter-spacing: 1px;
+  }
+  .touch-btn.active {
+    background: rgba(255,255,255,0.25);
+    border-color: rgba(255,255,255,0.5);
+  }
+  /* Diamond layout: attack top-right, jump top-center, block bottom-left, special bottom-right */
+  .touch-btn-attack  { right: 0; top: 50px; background: rgba(255,80,80,0.12); border-color: rgba(255,80,80,0.3); }
+  .touch-btn-attack.active { background: rgba(255,80,80,0.35); }
+  .touch-btn-jump    { right: 62px; top: 0; background: rgba(80,200,80,0.12); border-color: rgba(80,200,80,0.3); }
+  .touch-btn-jump.active { background: rgba(80,200,80,0.35); }
+  .touch-btn-block   { right: 124px; top: 50px; background: rgba(80,80,255,0.12); border-color: rgba(80,80,255,0.3); }
+  .touch-btn-block.active { background: rgba(80,80,255,0.35); }
+  .touch-btn-special { right: 62px; top: 100px; background: rgba(255,200,0,0.12); border-color: rgba(255,200,0,0.3); }
+  .touch-btn-special.active { background: rgba(255,200,0,0.35); }
+
+  /* On touch devices, make game canvas fill viewport width */
+  @media (pointer: coarse) {
+    canvas#game-canvas {
+      width: 100vw !important;
+      max-width: 100vw;
+      height: auto;
+    }
+    #controls { display: none; }
+    body { overflow: hidden; }
+  }
 </style>
 </head>
 <body>
@@ -304,6 +406,20 @@
 
   <canvas id="game-canvas" width="1200" height="600"></canvas>
   <div id="net-indicator"></div>
+
+  <!-- Virtual gamepad for touch devices -->
+  <div id="touch-gamepad">
+    <div class="touch-stick-zone" id="stick-zone">
+      <div class="touch-stick-base"></div>
+      <div class="touch-stick-knob" id="stick-knob"></div>
+    </div>
+    <div class="touch-actions" id="touch-actions">
+      <div class="touch-btn touch-btn-attack" data-btn="attack">ATK</div>
+      <div class="touch-btn touch-btn-jump" data-btn="jump">JMP</div>
+      <div class="touch-btn touch-btn-block" data-btn="block">BLK</div>
+      <div class="touch-btn touch-btn-special" data-btn="special">SPL</div>
+    </div>
+  </div>
 
   <div id="controls">
     <span id="controls-local">
@@ -674,10 +790,155 @@
       function loop(timestamp) {
         game.update(timestamp);
         game.render('game-canvas');
+        // Update touch input bits each frame
+        if (isTouchDevice && game) {
+          game.set_touch_input(touchInputBits);
+        }
         requestAnimationFrame(loop);
       }
       requestAnimationFrame(loop);
+
+      // Show touch gamepad on touch devices
+      if (isTouchDevice) {
+        document.getElementById('touch-gamepad').classList.add('visible');
+      }
     });
+
+    // ── Virtual Gamepad (touch) ──────────────────────────────────────────
+    const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    let touchInputBits = 0;
+
+    // Stick state
+    const stickZone = document.getElementById('stick-zone');
+    const stickKnob = document.getElementById('stick-knob');
+    let stickTouchId = null;
+    let stickOrigin = null;
+    const STICK_RADIUS = 50;
+    const STICK_DEAD_ZONE = 12;
+
+    if (stickZone) {
+      stickZone.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        for (const t of e.changedTouches) {
+          if (stickTouchId === null) {
+            stickTouchId = t.identifier;
+            const rect = stickZone.getBoundingClientRect();
+            stickOrigin = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+            updateStick(t.clientX, t.clientY);
+          }
+        }
+      }, { passive: false });
+
+      stickZone.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        for (const t of e.changedTouches) {
+          if (t.identifier === stickTouchId) {
+            updateStick(t.clientX, t.clientY);
+          }
+        }
+      }, { passive: false });
+
+      const endStick = (e) => {
+        for (const t of e.changedTouches) {
+          if (t.identifier === stickTouchId) {
+            stickTouchId = null;
+            stickOrigin = null;
+            stickKnob.style.left = '50px';
+            stickKnob.style.top = '50px';
+            // Clear directional bits (0-3)
+            touchInputBits &= 0xF0;
+          }
+        }
+      };
+      stickZone.addEventListener('touchend', endStick, { passive: false });
+      stickZone.addEventListener('touchcancel', endStick, { passive: false });
+    }
+
+    function updateStick(cx, cy) {
+      if (!stickOrigin) return;
+      let dx = cx - stickOrigin.x;
+      let dy = cy - stickOrigin.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > STICK_RADIUS) {
+        dx = dx / dist * STICK_RADIUS;
+        dy = dy / dist * STICK_RADIUS;
+      }
+      // Move knob visual (center of knob is at 50+25=75 offset, so position = 50 + delta)
+      stickKnob.style.left = (50 + dx) + 'px';
+      stickKnob.style.top = (50 + dy) + 'px';
+
+      // Clear directional bits
+      touchInputBits &= 0xF0;
+      if (dist > STICK_DEAD_ZONE) {
+        const angle = Math.atan2(dy, dx);
+        // Right: -45° to 45°
+        if (angle > -0.785 && angle < 0.785) touchInputBits |= (1 << 1); // right
+        // Left: 135° to -135°
+        if (angle > 2.356 || angle < -2.356) touchInputBits |= (1 << 0); // left
+        // Down: 45° to 135°
+        if (angle > 0.785 && angle < 2.356) touchInputBits |= (1 << 3); // down
+        // Up: -45° to -135°
+        if (angle < -0.785 && angle > -2.356) touchInputBits |= (1 << 2); // up
+      }
+    }
+
+    // Action buttons — multi-touch support
+    const touchBtnMap = {
+      'attack': 4,   // bit 4 = light attack
+      'jump': 2,     // bit 2 = up/jump
+      'block': 7,    // bit 7 = block
+      'special': 6,  // bit 6 = special
+    };
+    const activeBtnTouches = new Map(); // touchId -> btnName
+
+    const actionsEl = document.getElementById('touch-actions');
+    if (actionsEl) {
+      actionsEl.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        for (const t of e.changedTouches) {
+          const el = document.elementFromPoint(t.clientX, t.clientY);
+          const btn = el?.dataset?.btn;
+          if (btn && touchBtnMap[btn] !== undefined) {
+            activeBtnTouches.set(t.identifier, btn);
+            el.classList.add('active');
+            touchInputBits |= (1 << touchBtnMap[btn]);
+          }
+        }
+      }, { passive: false });
+
+      actionsEl.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        for (const t of e.changedTouches) {
+          const el = document.elementFromPoint(t.clientX, t.clientY);
+          const newBtn = el?.dataset?.btn;
+          const oldBtn = activeBtnTouches.get(t.identifier);
+          if (oldBtn && oldBtn !== newBtn) {
+            // Finger slid off old button
+            touchInputBits &= ~(1 << touchBtnMap[oldBtn]);
+            document.querySelector(`[data-btn="${oldBtn}"]`)?.classList.remove('active');
+            activeBtnTouches.delete(t.identifier);
+          }
+          if (newBtn && touchBtnMap[newBtn] !== undefined && newBtn !== oldBtn) {
+            activeBtnTouches.set(t.identifier, newBtn);
+            el.classList.add('active');
+            touchInputBits |= (1 << touchBtnMap[newBtn]);
+          }
+        }
+      }, { passive: false });
+
+      const endBtn = (e) => {
+        for (const t of e.changedTouches) {
+          const btn = activeBtnTouches.get(t.identifier);
+          if (btn) {
+            touchInputBits &= ~(1 << touchBtnMap[btn]);
+            document.querySelector(`[data-btn="${btn}"]`)?.classList.remove('active');
+            activeBtnTouches.delete(t.identifier);
+          }
+        }
+      };
+      actionsEl.addEventListener('touchend', endBtn, { passive: false });
+      actionsEl.addEventListener('touchcancel', endBtn, { passive: false });
+    }
   </script>
 </body>
 </html>
