@@ -19,6 +19,8 @@ pub enum PlayerAction {
     Block,
     Fireball,
     DashStrike,
+    ShadowSurge,
+    VoidDash,
     Hitstun { frames_remaining: i32 },
     Blockstun { frames_remaining: i32 },
     Knockdown { frames_remaining: i32 },
@@ -60,6 +62,8 @@ fn action_duration(action: &PlayerAction) -> i32 {
         PlayerAction::AerialAttack => 16,
         PlayerAction::Fireball => 22,
         PlayerAction::DashStrike => 18,
+        PlayerAction::ShadowSurge => 24,
+        PlayerAction::VoidDash => 20,
         PlayerAction::Getup => 20,
         _ => 0, // no fixed duration
     }
@@ -77,6 +81,7 @@ pub fn attack_damage(action: &PlayerAction) -> i32 {
         PlayerAction::Uppercut => 60,      // anti-air launcher
         PlayerAction::AerialAttack => 50,  // air-to-air or jump-in
         PlayerAction::DashStrike => 55,    // gap closer, costs meter
+        PlayerAction::VoidDash => 75,      // teleport strike, high damage
         _ => 0,
     }
 }
@@ -93,6 +98,7 @@ pub fn attack_hitstun(action: &PlayerAction) -> i32 {
         PlayerAction::Uppercut => 18,      // launcher hitstun
         PlayerAction::AerialAttack => 15,  // air reset
         PlayerAction::DashStrike => 16,    // dash-in advantage
+        PlayerAction::VoidDash => 18,      // teleport strike hitstun
         _ => 0,
     }
 }
@@ -107,6 +113,8 @@ fn active_frames(action: &PlayerAction) -> (i32, i32) {
         PlayerAction::Uppercut => (5, 12),
         PlayerAction::AerialAttack => (4, 10),
         PlayerAction::DashStrike => (6, 12),
+        PlayerAction::ShadowSurge => (0, 0), // projectile-only, no melee hitbox
+        PlayerAction::VoidDash => (6, 13),
         _ => (0, 0),
     }
 }
@@ -122,6 +130,8 @@ fn is_attack(action: &PlayerAction) -> bool {
             | PlayerAction::AerialAttack
             | PlayerAction::DashStrike
             | PlayerAction::Fireball
+            | PlayerAction::ShadowSurge
+            | PlayerAction::VoidDash
     )
 }
 
@@ -130,6 +140,8 @@ pub fn special_energy_cost(action: &PlayerAction) -> i32 {
     match action {
         PlayerAction::Fireball => SPECIAL_ENERGY_COST,
         PlayerAction::DashStrike => SPECIAL_ENERGY_COST,
+        PlayerAction::ShadowSurge => SHADOW_SURGE_ENERGY_COST,
+        PlayerAction::VoidDash => VOID_DASH_ENERGY_COST,
         _ => 0,
     }
 }
@@ -194,19 +206,27 @@ impl PlayerState {
         // Special move combinations (check before basic attacks)
         if input.is_special() && self.is_grounded {
             let forward = (input.is_right() && self.facing > 0) || (input.is_left() && self.facing < 0);
-            if input.is_down() && self.energy >= special_energy_cost(&PlayerAction::Fireball) {
-                // Down + Special = Fireball
-                self.energy -= special_energy_cost(&PlayerAction::Fireball);
-                self.action = PlayerAction::Fireball;
+            let is_dark = self.element == Element::DarkMagic;
+            let projectile_action = if is_dark { PlayerAction::ShadowSurge } else { PlayerAction::Fireball };
+            let dash_action = if is_dark { PlayerAction::VoidDash } else { PlayerAction::DashStrike };
+            if input.is_down() && self.energy >= special_energy_cost(&projectile_action) {
+                // Down + Special = Fireball / Shadow Surge
+                self.energy -= special_energy_cost(&projectile_action);
+                self.action = projectile_action;
                 self.action_frame = 0;
                 self.vx = FixedPoint::ZERO;
                 return;
-            } else if forward && self.energy >= special_energy_cost(&PlayerAction::DashStrike) {
-                // Forward + Special = Dash Strike
-                self.energy -= special_energy_cost(&PlayerAction::DashStrike);
-                self.action = PlayerAction::DashStrike;
+            } else if forward && self.energy >= special_energy_cost(&dash_action) {
+                // Forward + Special = Dash Strike / Void Dash
+                self.energy -= special_energy_cost(&dash_action);
+                self.action = dash_action;
                 self.action_frame = 0;
-                self.vx = FixedPoint(PLAYER_SPEED.0 * self.facing as i32 * DASH_STRIKE_SPEED_MULT);
+                if is_dark {
+                    // VoidDash: no forward movement, teleport handled in GameState
+                    self.vx = FixedPoint::ZERO;
+                } else {
+                    self.vx = FixedPoint(PLAYER_SPEED.0 * self.facing as i32 * DASH_STRIKE_SPEED_MULT);
+                }
                 return;
             } else {
                 // Special alone = Uppercut
@@ -269,7 +289,12 @@ impl PlayerState {
             } else {
                 PlayerAction::WalkBack
             };
-            self.vx = FixedPoint(PLAYER_SPEED.0 * move_dir);
+            let speed = if self.element == Element::DarkMagic {
+                FixedPoint(PLAYER_SPEED.0 * UMBRA_SPEED_PERCENT / 100)
+            } else {
+                PLAYER_SPEED
+            };
+            self.vx = FixedPoint(speed.0 * move_dir);
         } else if self.is_grounded {
             self.action = PlayerAction::Idle;
             self.action_frame = 0;
@@ -320,6 +345,11 @@ impl PlayerState {
             } else {
                 self.vx = FixedPoint::ZERO;
             }
+        }
+
+        // VoidDash: no self-movement, teleport handled in GameState::tick
+        if self.action == PlayerAction::VoidDash {
+            self.vx = FixedPoint::ZERO;
         }
 
         // Apply gravity if airborne
@@ -410,6 +440,7 @@ impl PlayerState {
             PlayerAction::Uppercut => (15, -80, 40, 50),
             PlayerAction::AerialAttack => (20, -40, 45, 35),
             PlayerAction::DashStrike => (20, -55, 60, 40),
+            PlayerAction::VoidDash => (15, -55, 55, 40),
             _ => return [None, None, None, None],
         };
 

@@ -1,5 +1,5 @@
 use game_sim::constants::{MAX_ENERGY, MAX_HEALTH, TICKS_PER_SECOND};
-use game_sim::player::{Element, PlayerState};
+use game_sim::player::{Element, PlayerAction, PlayerState};
 use game_sim::{GameState, Projectile, MAX_PROJECTILES};
 use web_sys::CanvasRenderingContext2d;
 
@@ -9,22 +9,25 @@ const CANVAS_W: f64 = 1200.0;
 const CANVAS_H: f64 = 600.0;
 const GROUND_Y: f64 = 500.0;
 
-/// Element accent colors per player slot.
-fn player_accent(player_index: usize) -> &'static str {
-    if player_index == 0 {
-        "#ff6600" // fire orange
-    } else {
-        "#88ccff" // lightning cyan
+/// Element accent colors.
+fn element_accent(element: Element) -> &'static str {
+    match element {
+        Element::Fire => "#ff6600",
+        Element::Lightning => "#88ccff",
+        Element::DarkMagic => "#9900ff",
+        Element::Ice => "#66eeff",
     }
 }
 
-fn player_glow(player_index: usize) -> &'static str {
-    if player_index == 0 {
-        "rgba(255,102,0,0.35)"
-    } else {
-        "rgba(100,180,255,0.35)"
+fn element_glow(element: Element) -> &'static str {
+    match element {
+        Element::Fire => "rgba(255,102,0,0.35)",
+        Element::Lightning => "rgba(100,180,255,0.35)",
+        Element::DarkMagic => "rgba(153,0,255,0.35)",
+        Element::Ice => "rgba(102,238,255,0.35)",
     }
 }
+
 
 pub fn render_frame(
     ctx: &CanvasRenderingContext2d,
@@ -54,7 +57,7 @@ pub fn render_frame(
     draw_energy_bar(ctx, state.players[0].energy, 30.0, 58.0, false);
     draw_energy_bar(ctx, state.players[1].energy, CANVAS_W as f32 - 30.0, 58.0, true);
     draw_timer(ctx, state.round_timer);
-    draw_round_indicators(ctx, &state.round_scores);
+    draw_round_indicators(ctx, &state.round_scores, &[state.players[0].element, state.players[1].element]);
     draw_combo_counter(ctx, state);
 }
 
@@ -122,11 +125,26 @@ fn draw_character(
     skeleton: &crate::animation::Skeleton,
     facing: f32,
     flash: bool,
-    player_index: usize,
+    _player_index: usize,
 ) {
+    // VoidDash: character is invisible during pre-teleport frames (0-4)
+    if _player.action == PlayerAction::VoidDash && _player.action_frame < 5 {
+        // Draw a fading shadow silhouette
+        ctx.save();
+        ctx.set_global_alpha(0.2);
+        let joints = &skeleton.joints;
+        let hips = &joints[JointId::Hips as usize];
+        ctx.set_fill_style_str("rgba(80,0,160,0.3)");
+        ctx.begin_path();
+        let _ = ctx.arc(hips.x as f64, (hips.y - 30.0) as f64, 25.0, 0.0, std::f64::consts::TAU);
+        ctx.fill();
+        ctx.restore();
+        return;
+    }
+
     let joints = &skeleton.joints;
-    let accent = if flash { "#ffffff" } else { player_accent(player_index) };
-    let glow = player_glow(player_index);
+    let accent = if flash { "#ffffff" } else { element_accent(_player.element) };
+    let glow = element_glow(_player.element);
 
     // Ground shadow (ellipse approximated with arc + scale)
     let hips = &joints[JointId::Hips as usize];
@@ -366,8 +384,8 @@ fn draw_health_bar(ctx: &CanvasRenderingContext2d, player: &PlayerState, player_
     ctx.stroke_rect(x, y, bar_w, bar_h);
 
     // Player label
-    let accent = player_accent(player_index);
-    ctx.set_fill_style_str(accent);
+    let label_accent = element_accent(player.element);
+    ctx.set_fill_style_str(label_accent);
     ctx.set_font("bold 14px monospace");
     if flip {
         ctx.set_text_align("right");
@@ -423,7 +441,7 @@ pub fn draw_timer(ctx: &CanvasRenderingContext2d, round_timer: i32) {
     let _ = ctx.fill_text(&text, CANVAS_W / 2.0, 45.0);
 }
 
-pub fn draw_round_indicators(ctx: &CanvasRenderingContext2d, scores: &[i32; 2]) {
+pub fn draw_round_indicators(ctx: &CanvasRenderingContext2d, scores: &[i32; 2], elements: &[Element; 2]) {
     let center_x = CANVAS_W / 2.0;
     let y = 62.0;
     let dot_r = 5.0;
@@ -435,7 +453,7 @@ pub fn draw_round_indicators(ctx: &CanvasRenderingContext2d, scores: &[i32; 2]) 
         ctx.begin_path();
         let _ = ctx.arc(x, y, dot_r, 0.0, std::f64::consts::TAU);
         if (i as i32) < scores[0] {
-            ctx.set_fill_style_str("#ff6600");
+            ctx.set_fill_style_str(element_accent(elements[0]));
         } else {
             ctx.set_fill_style_str("#333333");
         }
@@ -451,7 +469,7 @@ pub fn draw_round_indicators(ctx: &CanvasRenderingContext2d, scores: &[i32; 2]) 
         ctx.begin_path();
         let _ = ctx.arc(x, y, dot_r, 0.0, std::f64::consts::TAU);
         if (i as i32) < scores[1] {
-            ctx.set_fill_style_str("#88ccff");
+            ctx.set_fill_style_str(element_accent(elements[1]));
         } else {
             ctx.set_fill_style_str("#333333");
         }
@@ -490,19 +508,27 @@ pub fn render_projectiles(ctx: &CanvasRenderingContext2d, projectiles: &[Project
             Element::Ice => ("#66eeff", "rgba(102,238,255,0.6)"),
         };
 
+        // Shadow Surge void orb: larger, darker core with pulsing outer ring
+        let is_void_orb = matches!(proj.element, Element::DarkMagic);
+        let (outer_r, inner_r) = if is_void_orb { (11.0, 5.0) } else { (8.0, 3.0) };
+
         // Outer glow
         ctx.save();
-        ctx.set_shadow_blur(15.0);
+        ctx.set_shadow_blur(if is_void_orb { 20.0 } else { 15.0 });
         ctx.set_shadow_color(glow_color);
         ctx.set_fill_style_str(color);
         ctx.begin_path();
-        let _ = ctx.arc(px, py, 8.0, 0.0, std::f64::consts::TAU);
+        let _ = ctx.arc(px, py, outer_r, 0.0, std::f64::consts::TAU);
         ctx.fill();
 
-        // Inner bright core
-        ctx.set_fill_style_str("#ffffff");
+        // Inner core — dark for void orb, white for others
+        if is_void_orb {
+            ctx.set_fill_style_str("#1a0033");
+        } else {
+            ctx.set_fill_style_str("#ffffff");
+        }
         ctx.begin_path();
-        let _ = ctx.arc(px, py, 3.0, 0.0, std::f64::consts::TAU);
+        let _ = ctx.arc(px, py, inner_r, 0.0, std::f64::consts::TAU);
         ctx.fill();
         ctx.restore();
     }
@@ -533,6 +559,8 @@ pub fn render_debug_overlay(
             Block => "Block",
             Fireball => "Fireball",
             DashStrike => "DashStrike",
+            ShadowSurge => "ShadowSurge",
+            VoidDash => "VoidDash",
             Hitstun { .. } => "Hitstun",
             Blockstun { .. } => "Blockstun",
             Knockdown { .. } => "Knockdown",

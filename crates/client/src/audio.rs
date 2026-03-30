@@ -164,6 +164,64 @@ impl SoundEngine {
         osc.stop_with_when(now + 0.25).ok();
     }
 
+    /// Shadow Surge cast — low ominous void rumble
+    pub fn play_shadow_surge(&mut self) {
+        let ctx = match self.ensure_ctx() {
+            Some(c) => c,
+            None => return,
+        };
+        let osc = match ctx.create_oscillator() {
+            Ok(o) => o,
+            Err(_) => return,
+        };
+        let gain = match ctx.create_gain() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+        osc.set_type(OscillatorType::Sawtooth);
+        let now = ctx.current_time();
+        osc.frequency().set_value_at_time(80.0, now).ok();
+        osc.frequency().exponential_ramp_to_value_at_time(200.0, now + 0.2).ok();
+        gain.gain().set_value_at_time(0.14, now).ok();
+        gain.gain().exponential_ramp_to_value_at_time(0.001, now + 0.3).ok();
+        let _ = osc.connect_with_audio_node(&gain);
+        let _ = gain.connect_with_audio_node(&ctx.destination());
+        osc.start().ok();
+        osc.stop_with_when(now + 0.3).ok();
+        // Sub-bass undertone
+        self.play_tone(40.0, 0.25, 0.1, OscillatorType::Sine);
+    }
+
+    /// Void Dash teleport — reverse whoosh with dark energy burst
+    pub fn play_void_dash(&mut self) {
+        let ctx = match self.ensure_ctx() {
+            Some(c) => c,
+            None => return,
+        };
+        let osc = match ctx.create_oscillator() {
+            Ok(o) => o,
+            Err(_) => return,
+        };
+        let gain = match ctx.create_gain() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+        osc.set_type(OscillatorType::Square);
+        let now = ctx.current_time();
+        // Descending sweep — gives teleport "vanishing" feel
+        osc.frequency().set_value_at_time(300.0, now).ok();
+        osc.frequency().exponential_ramp_to_value_at_time(50.0, now + 0.15).ok();
+        gain.gain().set_value_at_time(0.1, now).ok();
+        gain.gain().exponential_ramp_to_value_at_time(0.001, now + 0.15).ok();
+        let _ = osc.connect_with_audio_node(&gain);
+        let _ = gain.connect_with_audio_node(&ctx.destination());
+        osc.start().ok();
+        osc.stop_with_when(now + 0.15).ok();
+        // Low rumble on reappearance
+        self.play_tone(60.0, 0.12, 0.08, OscillatorType::Sawtooth);
+        self.play_noise_burst(0.06, 0.06);
+    }
+
     /// Dash strike whoosh
     pub fn play_dash(&mut self) {
         let ctx = match self.ensure_ctx() {

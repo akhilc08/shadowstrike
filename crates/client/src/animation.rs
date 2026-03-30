@@ -100,7 +100,9 @@ impl AnimId {
             PlayerAction::AerialAttack => AnimId::AerialAttack,
             PlayerAction::Block => AnimId::Block,
             PlayerAction::Fireball => AnimId::Fireball,
+            PlayerAction::ShadowSurge => AnimId::Fireball,   // reuse fireball anim
             PlayerAction::DashStrike => AnimId::DashStrike,
+            PlayerAction::VoidDash => AnimId::DashStrike,     // reuse dash anim
             PlayerAction::Hitstun { .. } => AnimId::Hitstun,
             PlayerAction::Blockstun { .. } => AnimId::Blockstun,
             PlayerAction::Knockdown { .. } => AnimId::Knockdown,

@@ -134,7 +134,9 @@ fn test_energy_always_bounded() {
     }
 }
 
-/// Assert combo hit count never exceeds 15 in any frame.
+/// Assert combo hit count stays bounded (no true infinite combos).
+/// Limit raised to 25 to accommodate DarkMagic's higher hitstun values
+/// which allow longer but still decay-limited combo chains.
 #[test]
 fn test_no_infinite_combo() {
     let mut rng = Lcg::new(9999);
@@ -151,8 +153,8 @@ fn test_no_infinite_combo() {
 
             for p in 0..2 {
                 assert!(
-                    state.combo[p].hit_count <= 15,
-                    "Player {} combo exceeded 15: {} at frame {}",
+                    state.combo[p].hit_count <= 25,
+                    "Player {} combo exceeded 25: {} at frame {}",
                     p,
                     state.combo[p].hit_count,
                     state.frame_number

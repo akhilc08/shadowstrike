@@ -263,6 +263,14 @@ fn element_style(element: Element, effect: EffectType) -> (u8, u8, u8, ParticleB
             (r, g, b, ParticleBehavior::Standard)
         }
         Element::DarkMagic => {
+            let (r, g, b) = match effect {
+                EffectType::HitImpact => (153, 0, 255),       // bright purple flash
+                EffectType::SwordTrail => (102, 0, 204),      // deep purple trail
+                EffectType::IdleAmbient => (80, 0, 160),      // dark purple wisps
+                EffectType::SpecialActivation => (153, 0, 255), // bright void burst
+                EffectType::WalkDust => (60, 0, 100),         // near-black shadow dust
+                _ => (120, 0, 200),
+            };
             let behavior = match effect {
                 EffectType::IdleAmbient | EffectType::SpecialActivation => {
                     ParticleBehavior::Spiral { angle: 0.0 }
@@ -270,7 +278,7 @@ fn element_style(element: Element, effect: EffectType) -> (u8, u8, u8, ParticleB
                 EffectType::HitImpact => ParticleBehavior::Standard,
                 _ => ParticleBehavior::Spiral { angle: 0.0 },
             };
-            (160, 50, 220, behavior)
+            (r, g, b, behavior)
         }
         Element::Ice => {
             let behavior = match effect {

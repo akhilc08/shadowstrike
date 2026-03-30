@@ -49,3 +49,21 @@ pub const COMBO_MIN_SCALE: i32 = 250;
 pub const BLOCK_CHIP_PERCENT: i32 = 20;
 /// Blockstun multiplier: hitstun * 0.6 — defenders recover faster from blocked hits
 pub const BLOCKSTUN_RATIO: i32 = 600;
+
+// ── Umbra (DarkMagic) character-specific constants ──
+/// Umbra walk speed: 85% of normal — trades speed for power
+pub const UMBRA_SPEED_PERCENT: i32 = 85;
+/// Shadow Surge energy cost: 30 — same as fireball
+pub const SHADOW_SURGE_ENERGY_COST: i32 = 30;
+/// Void Dash energy cost: 25 — slightly cheaper to encourage aggressive teleport play
+pub const VOID_DASH_ENERGY_COST: i32 = 25;
+/// Shadow Surge projectile speed: 4 px/frame — slower than fireball, harder to dodge at close range
+pub const SHADOW_SURGE_SPEED: i32 = 4;
+/// Shadow Surge projectile damage: 70 — heavy zoning tool
+pub const SHADOW_SURGE_DAMAGE: i32 = 70;
+/// Shadow Surge hitstun: 20 frames — briefly slows opponent (extra hitstun)
+pub const SHADOW_SURGE_HITSTUN: i32 = 20;
+/// Shadow Surge lifetime: 90 frames — slower speed needs longer travel time
+pub const SHADOW_SURGE_LIFETIME: i32 = 90;
+/// Void Dash teleport offset behind opponent: 40 px
+pub const VOID_DASH_TELEPORT_OFFSET: i32 = 40;

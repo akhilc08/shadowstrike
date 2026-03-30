@@ -119,23 +119,47 @@ impl GameState {
         // Hit detection
         self.hit_this_frame = [false; 2];
 
-        // Spawn projectiles from Fireball action at the right frame
+        // Spawn projectiles from Fireball/ShadowSurge action at the right frame
         for i in 0..2 {
-            if self.players[i].action == PlayerAction::Fireball && self.players[i].action_frame == 8 {
+            let is_fireball = self.players[i].action == PlayerAction::Fireball && self.players[i].action_frame == 8;
+            let is_shadow_surge = self.players[i].action == PlayerAction::ShadowSurge && self.players[i].action_frame == 10;
+            if is_fireball || is_shadow_surge {
                 if let Some(slot) = self.projectiles.iter().position(|p| !p.active) {
                     let facing = self.players[i].facing as i32;
+                    let (speed, damage, hitstun, lifetime) = if is_shadow_surge {
+                        (SHADOW_SURGE_SPEED, SHADOW_SURGE_DAMAGE, SHADOW_SURGE_HITSTUN, SHADOW_SURGE_LIFETIME)
+                    } else {
+                        (PROJECTILE_SPEED, PROJECTILE_DAMAGE, PROJECTILE_HITSTUN, PROJECTILE_LIFETIME)
+                    };
                     self.projectiles[slot] = Projectile {
                         active: true,
                         x: self.players[i].x + FixedPoint::from_int(30 * facing),
                         y: self.players[i].y - FixedPoint::from_int(50),
-                        vx: FixedPoint::from_int(PROJECTILE_SPEED * facing),
+                        vx: FixedPoint::from_int(speed * facing),
                         owner: i,
-                        damage: PROJECTILE_DAMAGE,
-                        hitstun: PROJECTILE_HITSTUN,
-                        lifetime: PROJECTILE_LIFETIME,
+                        damage,
+                        hitstun,
+                        lifetime,
                         element: self.players[i].element,
                     };
                 }
+            }
+        }
+
+        // VoidDash teleport: at frame 5, teleport behind opponent
+        for i in 0..2 {
+            if self.players[i].action == PlayerAction::VoidDash && self.players[i].action_frame == 5 {
+                let opp = 1 - i;
+                let opp_x = self.players[opp].x;
+                let opp_facing = self.players[opp].facing as i32;
+                // Appear behind the opponent
+                let behind_x = opp_x + FixedPoint::from_int(VOID_DASH_TELEPORT_OFFSET * opp_facing);
+                // Clamp to stage bounds
+                let min_x = FixedPoint::ZERO;
+                let max_x = FixedPoint::from_int(STAGE_WIDTH);
+                self.players[i].x = if behind_x < min_x { min_x } else if behind_x > max_x { max_x } else { behind_x };
+                // Face toward the opponent
+                self.players[i].auto_face_opponent(opp_x);
             }
         }
 

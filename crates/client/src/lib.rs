@@ -461,12 +461,8 @@ impl ShadowStrike {
             let anim = get_animation(anim_id);
             self.anim_states[i].advance(&anim);
 
-            // Elemental particle theme: P1=Fire, P2=Lightning
-            let visual_elem = if i == 0 {
-                Element::Fire
-            } else {
-                Element::Lightning
-            };
+            // Use actual player element for particle theme
+            let visual_elem = self.game_state.players[i].element;
 
             // Emit particles and play sounds on action changes
             let prev = self.prev_actions[i];
@@ -481,6 +477,8 @@ impl ShadowStrike {
                     PlayerAction::Blockstun { .. } => self.sound.play_block(),
                     PlayerAction::Fireball => self.sound.play_fireball(),
                     PlayerAction::DashStrike => self.sound.play_dash(),
+                    PlayerAction::ShadowSurge => self.sound.play_shadow_surge(),
+                    PlayerAction::VoidDash => self.sound.play_void_dash(),
                     _ => {}
                 }
 
@@ -495,11 +493,22 @@ impl ShadowStrike {
                         self.particles
                             .emit(px, py - 40.0, visual_elem, EffectType::SpecialActivation);
                     }
+                    PlayerAction::ShadowSurge => {
+                        self.particles
+                            .emit(px, py - 40.0, visual_elem, EffectType::SpecialActivation);
+                        self.particles
+                            .emit(px, py - 30.0, visual_elem, EffectType::SwordTrail);
+                    }
                     PlayerAction::DashStrike => {
                         self.particles
                             .emit(px, py - 30.0, visual_elem, EffectType::SpecialActivation);
                         self.particles
                             .emit(px, py - 30.0, visual_elem, EffectType::SwordTrail);
+                    }
+                    PlayerAction::VoidDash => {
+                        // Shadow burst at departure point
+                        self.particles
+                            .emit(px, py - 30.0, visual_elem, EffectType::SpecialActivation);
                     }
                     PlayerAction::LightAttack1
                     | PlayerAction::LightAttack2
@@ -536,11 +545,7 @@ impl ShadowStrike {
             for i in 0..2 {
                 let px = self.game_state.players[i].x.to_f32();
                 let py = self.game_state.players[i].y.to_f32();
-                let visual_elem = if i == 0 {
-                    Element::Fire
-                } else {
-                    Element::Lightning
-                };
+                let visual_elem = self.game_state.players[i].element;
                 self.particles
                     .emit(px, py - 40.0, visual_elem, EffectType::IdleAmbient);
             }
