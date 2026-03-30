@@ -1,0 +1,1 @@
+// ShadowStrike client — WASM frontend

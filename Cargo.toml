@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/game_sim", "crates/client", "crates/relay"]
+resolver = "2"
