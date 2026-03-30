@@ -6,12 +6,43 @@ pub mod input;
 pub mod player;
 pub mod ring_buffer;
 
-use collision::check_hit;
+use collision::{check_hit, overlaps, AABB};
 use combo::ComboState;
 use constants::*;
 use fixed::FixedPoint;
 use input::Input;
 use player::{attack_damage, attack_hitstun, Element, PlayerAction, PlayerState};
+
+pub const MAX_PROJECTILES: usize = 4;
+
+#[derive(Debug, Clone, Copy)]
+pub struct Projectile {
+    pub active: bool,
+    pub x: FixedPoint,
+    pub y: FixedPoint,
+    pub vx: FixedPoint,
+    pub owner: usize,
+    pub damage: i32,
+    pub hitstun: i32,
+    pub lifetime: i32,
+    pub element: Element,
+}
+
+impl Projectile {
+    pub fn empty() -> Self {
+        Projectile {
+            active: false,
+            x: FixedPoint::ZERO,
+            y: FixedPoint::ZERO,
+            vx: FixedPoint::ZERO,
+            owner: 0,
+            damage: 0,
+            hitstun: 0,
+            lifetime: 0,
+            element: Element::Fire,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GamePhase {
@@ -24,6 +55,7 @@ pub enum GamePhase {
 pub struct GameState {
     pub players: [PlayerState; 2],
     pub combo: [ComboState; 2],
+    pub projectiles: [Projectile; MAX_PROJECTILES],
     pub round_timer: i32,
     pub round_number: i32,
     pub round_scores: [i32; 2],
@@ -44,6 +76,7 @@ impl GameState {
                 },
             ],
             combo: [ComboState::new(), ComboState::new()],
+            projectiles: [Projectile::empty(); MAX_PROJECTILES],
             round_timer: ROUND_TIME_SECONDS * TICKS_PER_SECOND,
             round_number: 1,
             round_scores: [0, 0],
@@ -85,6 +118,68 @@ impl GameState {
 
         // Hit detection
         self.hit_this_frame = [false; 2];
+
+        // Spawn projectiles from Fireball action at the right frame
+        for i in 0..2 {
+            if self.players[i].action == PlayerAction::Fireball && self.players[i].action_frame == 8 {
+                if let Some(slot) = self.projectiles.iter().position(|p| !p.active) {
+                    let facing = self.players[i].facing as i32;
+                    self.projectiles[slot] = Projectile {
+                        active: true,
+                        x: self.players[i].x + FixedPoint::from_int(30 * facing),
+                        y: self.players[i].y - FixedPoint::from_int(50),
+                        vx: FixedPoint::from_int(8 * facing),
+                        owner: i,
+                        damage: 50,
+                        hitstun: 16,
+                        lifetime: 90,
+                        element: self.players[i].element,
+                    };
+                }
+            }
+        }
+
+        // Tick projectiles
+        for proj in &mut self.projectiles {
+            if !proj.active {
+                continue;
+            }
+            proj.x += proj.vx;
+            proj.lifetime -= 1;
+            if proj.lifetime <= 0 || proj.x < FixedPoint::ZERO || proj.x > FixedPoint::from_int(STAGE_WIDTH) {
+                proj.active = false;
+            }
+        }
+
+        // Projectile-vs-player collision
+        for pi in 0..MAX_PROJECTILES {
+            if !self.projectiles[pi].active {
+                continue;
+            }
+            let defender_idx = 1 - self.projectiles[pi].owner;
+            let proj_box = AABB::new(
+                self.projectiles[pi].x - FixedPoint::from_int(10),
+                self.projectiles[pi].y - FixedPoint::from_int(10),
+                FixedPoint::from_int(20),
+                FixedPoint::from_int(20),
+            );
+            let hurtboxes = self.players[defender_idx].get_hurtboxes();
+            for hb in hurtboxes.iter().flatten() {
+                if overlaps(&proj_box, hb) {
+                    let element = self.projectiles[pi].element;
+                    let damage = self.projectiles[pi].damage;
+                    let hitstun = self.projectiles[pi].hitstun;
+                    let attacker_idx = self.projectiles[pi].owner;
+                    self.players[defender_idx].take_hit(damage, hitstun, element);
+                    self.hit_this_frame[attacker_idx] = true;
+                    self.players[attacker_idx].energy = (self.players[attacker_idx].energy + 5).min(MAX_ENERGY);
+                    self.projectiles[pi].active = false;
+                    break;
+                }
+            }
+        }
+
+        // Melee hit detection
         for attacker_idx in 0..2 {
             let defender_idx = 1 - attacker_idx;
             let hitboxes = self.players[attacker_idx].get_hitboxes();
@@ -179,6 +274,7 @@ impl GameState {
             p
         };
         self.combo = [ComboState::new(), ComboState::new()];
+        self.projectiles = [Projectile::empty(); MAX_PROJECTILES];
         self.round_timer = ROUND_TIME_SECONDS * TICKS_PER_SECOND;
         self.round_number += 1;
         self.phase = GamePhase::Fighting;
@@ -206,6 +302,12 @@ impl GameState {
             feed(p.energy);
             feed(p.guard_meter);
             feed(p.action_frame);
+        }
+        for proj in &self.projectiles {
+            feed(if proj.active { 1 } else { 0 });
+            feed(proj.x.raw());
+            feed(proj.y.raw());
+            feed(proj.lifetime);
         }
         feed(self.round_timer);
         feed(self.frame_number as i32);

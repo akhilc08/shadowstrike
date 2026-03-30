@@ -9,6 +9,7 @@ use game_sim::ring_buffer::RingBuffer;
 use game_sim::{GamePhase, GameState};
 
 pub mod animation;
+pub mod audio;
 pub mod input_handler;
 pub mod networking;
 pub mod particles;
@@ -139,6 +140,7 @@ pub struct ShadowStrike {
     game_state: GameState,
     anim_states: [AnimationState; 2],
     particles: ParticlePool,
+    sound: audio::SoundEngine,
     keys: HashSet<String>,
     last_tick: f64,
     tick_accumulator: f64,
@@ -152,6 +154,8 @@ pub struct ShadowStrike {
     hit_flash_frames: [i32; 2],
     screen_shake_frames: i32,
     screen_shake_intensity: f64,
+    // Sound state
+    bell_played: bool,
 }
 
 #[wasm_bindgen]
@@ -165,6 +169,7 @@ impl ShadowStrike {
             game_state: state,
             anim_states: [AnimationState::new(), AnimationState::new()],
             particles: ParticlePool::new(),
+            sound: audio::SoundEngine::new(),
             keys: HashSet::new(),
             last_tick: 0.0,
             tick_accumulator: 0.0,
@@ -176,6 +181,7 @@ impl ShadowStrike {
             hit_flash_frames: [0; 2],
             screen_shake_frames: 0,
             screen_shake_intensity: 0.0,
+            bell_played: false,
         }
     }
 
@@ -204,9 +210,14 @@ impl ShadowStrike {
         self.net = Some(net);
     }
 
-    /// Get network mode (0=local, 1=connecting, 3=relay, 4=disconnected)
+    /// Get network mode (0=local, 1=connecting, 2=webrtc_connecting, 3=relay, 4=disconnected, 5=webrtc_direct)
     pub fn network_mode(&self) -> u8 {
         self.net.as_ref().map(|n| n.mode()).unwrap_or(0)
+    }
+
+    /// Check if currently using WebRTC P2P
+    pub fn is_p2p(&self) -> bool {
+        self.net.as_ref().map(|n| n.is_p2p()).unwrap_or(false)
     }
 
     /// Get room code if available
@@ -288,6 +299,16 @@ impl ShadowStrike {
         while self.tick_accumulator >= TICK_DT {
             self.tick_accumulator -= TICK_DT;
             self.run_game_tick();
+        }
+
+        // Play round start bell
+        if self.game_state.frame_number == 40 && !self.bell_played {
+            self.sound.play_bell();
+            self.bell_played = true;
+        }
+        // Reset bell for next round
+        if self.game_state.frame_number == 0 {
+            self.bell_played = false;
         }
     }
 
@@ -378,13 +399,21 @@ impl ShadowStrike {
 
         self.game_state.tick(p1_input, p2_input);
 
-        // Detect hits for visual effects
+        // Detect hits for visual effects and sound
         for (i, &prev_hp) in health_before.iter().enumerate() {
             if self.game_state.players[i].health < prev_hp {
                 self.hit_flash_frames[i] = 6;
                 self.screen_shake_frames = 4;
                 let damage = prev_hp - self.game_state.players[i].health;
                 self.screen_shake_intensity = (damage as f64 / 100.0).clamp(2.0, 8.0);
+                // Sound based on damage
+                if self.game_state.players[i].health <= 0 {
+                    self.sound.play_ko();
+                } else if damage >= 60 {
+                    self.sound.play_sword_clash();
+                } else {
+                    self.sound.play_punch();
+                }
             }
         }
 
@@ -413,14 +442,34 @@ impl ShadowStrike {
                 Element::Lightning
             };
 
-            // Emit particles on action changes
+            // Emit particles and play sounds on action changes
             let prev = self.prev_actions[i];
             if anim_id != prev {
                 let px = self.game_state.players[i].x.to_f32();
                 let py = self.game_state.players[i].y.to_f32();
 
+                // Sound effects for new actions
+                match action {
+                    PlayerAction::Jump => self.sound.play_jump(),
+                    PlayerAction::Block => {}
+                    PlayerAction::Blockstun { .. } => self.sound.play_block(),
+                    PlayerAction::Fireball => self.sound.play_fireball(),
+                    PlayerAction::DashStrike => self.sound.play_dash(),
+                    _ => {}
+                }
+
                 match action {
                     PlayerAction::Uppercut => {
+                        self.particles
+                            .emit(px, py - 30.0, visual_elem, EffectType::SpecialActivation);
+                        self.particles
+                            .emit(px, py - 30.0, visual_elem, EffectType::SwordTrail);
+                    }
+                    PlayerAction::Fireball => {
+                        self.particles
+                            .emit(px, py - 40.0, visual_elem, EffectType::SpecialActivation);
+                    }
+                    PlayerAction::DashStrike => {
                         self.particles
                             .emit(px, py - 30.0, visual_elem, EffectType::SpecialActivation);
                         self.particles
@@ -507,6 +556,8 @@ impl ShadowStrike {
             &self.anim_states,
             &self.hit_flash_frames,
         );
+        // Render projectiles
+        renderer::render_projectiles(&ctx, &self.game_state.projectiles);
         self.particles.render(&ctx);
 
         // Draw game phase overlays

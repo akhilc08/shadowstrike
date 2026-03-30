@@ -1,6 +1,6 @@
 use game_sim::constants::{MAX_ENERGY, MAX_HEALTH, TICKS_PER_SECOND};
-use game_sim::player::PlayerState;
-use game_sim::GameState;
+use game_sim::player::{Element, PlayerState};
+use game_sim::{GameState, Projectile, MAX_PROJECTILES};
 use web_sys::CanvasRenderingContext2d;
 
 use crate::animation::{compute_skeleton, get_animation, AnimationState, Joint, JointId};
@@ -473,5 +473,37 @@ pub fn draw_combo_counter(ctx: &CanvasRenderingContext2d, state: &GameState) {
             let text = format!("{} HITS!", combo.hit_count);
             let _ = ctx.fill_text(&text, x, CANVAS_H - 50.0);
         }
+    }
+}
+
+pub fn render_projectiles(ctx: &CanvasRenderingContext2d, projectiles: &[Projectile; MAX_PROJECTILES]) {
+    for proj in projectiles {
+        if !proj.active {
+            continue;
+        }
+        let px = proj.x.to_f32() as f64;
+        let py = proj.y.to_f32() as f64;
+        let (color, glow_color) = match proj.element {
+            Element::Fire => ("#ff6600", "rgba(255,102,0,0.6)"),
+            Element::Lightning => ("#88ccff", "rgba(100,180,255,0.6)"),
+            Element::DarkMagic => ("#9933ff", "rgba(153,51,255,0.6)"),
+            Element::Ice => ("#66eeff", "rgba(102,238,255,0.6)"),
+        };
+
+        // Outer glow
+        ctx.save();
+        ctx.set_shadow_blur(15.0);
+        ctx.set_shadow_color(glow_color);
+        ctx.set_fill_style_str(color);
+        ctx.begin_path();
+        let _ = ctx.arc(px, py, 8.0, 0.0, std::f64::consts::TAU);
+        ctx.fill();
+
+        // Inner bright core
+        ctx.set_fill_style_str("#ffffff");
+        ctx.begin_path();
+        let _ = ctx.arc(px, py, 3.0, 0.0, std::f64::consts::TAU);
+        ctx.fill();
+        ctx.restore();
     }
 }

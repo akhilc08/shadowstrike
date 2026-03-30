@@ -76,6 +76,8 @@ pub enum AnimId {
     Uppercut,
     AerialAttack,
     Block,
+    Fireball,
+    DashStrike,
     Hitstun,
     Blockstun,
     Knockdown,
@@ -97,6 +99,8 @@ impl AnimId {
             PlayerAction::Uppercut => AnimId::Uppercut,
             PlayerAction::AerialAttack => AnimId::AerialAttack,
             PlayerAction::Block => AnimId::Block,
+            PlayerAction::Fireball => AnimId::Fireball,
+            PlayerAction::DashStrike => AnimId::DashStrike,
             PlayerAction::Hitstun { .. } => AnimId::Hitstun,
             PlayerAction::Blockstun { .. } => AnimId::Blockstun,
             PlayerAction::Knockdown { .. } => AnimId::Knockdown,
@@ -391,6 +395,55 @@ pub fn get_animation(id: AnimId) -> Animation {
                 keyframes: vec![
                     make_keyframe(windup, 2),
                     make_keyframe(slash, 2),
+                    make_keyframe(bp, 4),
+                ],
+                looping: false,
+            }
+        }
+        AnimId::Fireball => {
+            let windup = offset_joints(&bp, &[
+                (JointId::RElbow as usize, 5.0, -10.0),
+                (JointId::RWrist as usize, 10.0, -15.0),
+                (JointId::LElbow as usize, -3.0, -5.0),
+                (JointId::Torso as usize, -2.0, -1.0),
+            ]);
+            let cast = offset_joints(&bp, &[
+                (JointId::RElbow as usize, 18.0, -5.0),
+                (JointId::RWrist as usize, 28.0, -3.0),
+                (JointId::LElbow as usize, -8.0, -3.0),
+                (JointId::LWrist as usize, -12.0, -5.0),
+                (JointId::Torso as usize, 4.0, 0.0),
+            ]);
+            Animation {
+                keyframes: vec![
+                    make_keyframe(windup, 6),
+                    make_keyframe(cast, 4),
+                    make_keyframe(bp, 6),
+                ],
+                looping: false,
+            }
+        }
+        AnimId::DashStrike => {
+            let crouch = offset_joints(&bp, &[
+                (JointId::Hips as usize, 0.0, 5.0),
+                (JointId::Torso as usize, 5.0, -2.0),
+                (JointId::LKnee as usize, -4.0, -5.0),
+                (JointId::RKnee as usize, 4.0, -5.0),
+                (JointId::RElbow as usize, -5.0, -5.0),
+                (JointId::RWrist as usize, -8.0, -8.0),
+            ]);
+            let dash = offset_joints(&bp, &[
+                (JointId::Torso as usize, 10.0, -3.0),
+                (JointId::Hips as usize, 5.0, 0.0),
+                (JointId::RElbow as usize, 20.0, 0.0),
+                (JointId::RWrist as usize, 30.0, 2.0),
+                (JointId::LKnee as usize, -5.0, 3.0),
+                (JointId::RKnee as usize, 8.0, -3.0),
+            ]);
+            Animation {
+                keyframes: vec![
+                    make_keyframe(crouch, 4),
+                    make_keyframe(dash, 4),
                     make_keyframe(bp, 4),
                 ],
                 looping: false,

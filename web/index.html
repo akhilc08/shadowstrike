@@ -34,6 +34,8 @@
     align-items: center;
     gap: 16px;
     margin-top: 10px;
+    max-width: 1200px;
+    width: 100%;
   }
   .mode-toggle {
     display: flex;
@@ -52,35 +54,82 @@
   }
   .mode-toggle button.active { border-color: #ff6600; color: #ff6600; }
   .mode-toggle button:hover { border-color: #666; }
-  .player-select {
+
+  /* Character Select Layout */
+  .char-select-row {
+    display: flex;
+    gap: 40px;
+    justify-content: center;
+    width: 100%;
+  }
+  .player-panel {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
+    gap: 10px;
+    flex: 1;
+    max-width: 500px;
   }
-  .player-select h2 {
-    font-size: 0.85rem;
+  .player-panel h2 {
+    font-size: 0.9rem;
     color: #888;
+    letter-spacing: 2px;
   }
-  .element-buttons {
+  .player-panel.p1 h2 { color: #ff6600; }
+  .player-panel.p2 h2 { color: #88ccff; }
+
+  .char-cards {
     display: flex;
-    gap: 8px;
+    gap: 12px;
   }
-  .element-buttons button {
-    padding: 8px 18px;
-    border: 2px solid #333;
-    background: #111;
-    color: #ccc;
-    font-family: inherit;
-    font-size: 0.85rem;
+  .char-card {
+    width: 200px;
+    border: 2px solid #222;
+    background: #0a0a14;
     cursor: pointer;
-    transition: border-color 0.2s, color 0.2s;
+    transition: all 0.2s;
+    padding: 12px;
+    text-align: center;
   }
-  .element-buttons button:hover { border-color: #666; }
-  .element-buttons button[data-element="0"].selected { border-color: #ff6600; color: #ff6600; }
-  .element-buttons button[data-element="1"].selected { border-color: #aaccff; color: #aaccff; }
-  .element-buttons button[data-element="2"].selected { border-color: #9933ff; color: #9933ff; }
-  .element-buttons button[data-element="3"].selected { border-color: #66eeff; color: #66eeff; }
+  .char-card:hover { border-color: #444; background: #0f0f1a; }
+  .char-card.selected-fire { border-color: #ff6600; box-shadow: 0 0 15px rgba(255,102,0,0.2); }
+  .char-card.selected-lightning { border-color: #88ccff; box-shadow: 0 0 15px rgba(100,180,255,0.2); }
+
+  .char-card .char-name {
+    font-size: 1rem;
+    font-weight: bold;
+    margin-bottom: 4px;
+  }
+  .char-card .char-element {
+    font-size: 0.7rem;
+    color: #666;
+    margin-bottom: 8px;
+  }
+  .char-preview {
+    width: 100%;
+    height: 120px;
+    position: relative;
+    margin-bottom: 8px;
+  }
+  .char-preview canvas {
+    width: 100%;
+    height: 100%;
+  }
+  .char-card .move-list {
+    text-align: left;
+    font-size: 0.65rem;
+    color: #777;
+    line-height: 1.6;
+  }
+  .char-card .move-list .move-name {
+    color: #aaa;
+    font-weight: bold;
+  }
+  .char-card .move-list .move-input {
+    color: #ffcc00;
+    font-size: 0.6rem;
+  }
+
   #online-panel {
     display: none;
     flex-direction: column;
@@ -135,10 +184,11 @@
     font-size: 1rem;
     cursor: pointer;
     display: none;
+    letter-spacing: 4px;
   }
   #start-btn.ready { display: block; border-color: #33cc33; color: #33cc33; }
   #start-btn:hover { background: #222; }
-  canvas {
+  canvas#game-canvas {
     display: none;
     border: 1px solid #222;
     margin-top: 15px;
@@ -163,6 +213,7 @@
     z-index: 10;
   }
   #net-indicator.connected { color: #33cc33; border-color: #33cc33; }
+  #net-indicator.p2p { color: #ffcc00; border-color: #ffcc00; }
 </style>
 </head>
 <body>
@@ -175,22 +226,67 @@
       <button id="mode-online">Online</button>
     </div>
 
-    <div class="player-select" id="p1-select">
-      <h2>Player 1 &mdash; WASD + Z/X/C/V</h2>
-      <div class="element-buttons" id="p1-elements">
-        <button data-element="0">Fire</button>
-        <button data-element="1">Lightning</button>
-        <button data-element="2">Dark</button>
-        <button data-element="3">Ice</button>
+    <div class="char-select-row">
+      <!-- Player 1 Panel -->
+      <div class="player-panel p1" id="p1-panel">
+        <h2>PLAYER 1</h2>
+        <div class="char-cards" id="p1-chars">
+          <div class="char-card" data-char="inferno">
+            <div class="char-preview"><canvas id="preview-p1-inferno" width="200" height="120"></canvas></div>
+            <div class="char-name" style="color:#ff6600">INFERNO</div>
+            <div class="char-element">Fire Element</div>
+            <div class="move-list">
+              <div><span class="move-name">Light Chain</span> <span class="move-input">Z Z Z</span></div>
+              <div><span class="move-name">Heavy Slash</span> <span class="move-input">X</span></div>
+              <div><span class="move-name">Uppercut</span> <span class="move-input">C</span></div>
+              <div><span class="move-name">Fireball</span> <span class="move-input">&darr;+C</span></div>
+              <div><span class="move-name">Flame Rush</span> <span class="move-input">&rarr;+C</span></div>
+            </div>
+          </div>
+          <div class="char-card" data-char="voltaic">
+            <div class="char-preview"><canvas id="preview-p1-voltaic" width="200" height="120"></canvas></div>
+            <div class="char-name" style="color:#88ccff">VOLTAIC</div>
+            <div class="char-element">Lightning Element</div>
+            <div class="move-list">
+              <div><span class="move-name">Light Chain</span> <span class="move-input">Z Z Z</span></div>
+              <div><span class="move-name">Heavy Slash</span> <span class="move-input">X</span></div>
+              <div><span class="move-name">Uppercut</span> <span class="move-input">C</span></div>
+              <div><span class="move-name">Bolt Shot</span> <span class="move-input">&darr;+C</span></div>
+              <div><span class="move-name">Thunder Dash</span> <span class="move-input">&rarr;+C</span></div>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-    <div class="player-select" id="p2-select">
-      <h2>Player 2 &mdash; Arrows + J/K/L/;</h2>
-      <div class="element-buttons" id="p2-elements">
-        <button data-element="0">Fire</button>
-        <button data-element="1">Lightning</button>
-        <button data-element="2">Dark</button>
-        <button data-element="3">Ice</button>
+
+      <!-- Player 2 Panel -->
+      <div class="player-panel p2" id="p2-panel">
+        <h2>PLAYER 2</h2>
+        <div class="char-cards" id="p2-chars">
+          <div class="char-card" data-char="inferno">
+            <div class="char-preview"><canvas id="preview-p2-inferno" width="200" height="120"></canvas></div>
+            <div class="char-name" style="color:#ff6600">INFERNO</div>
+            <div class="char-element">Fire Element</div>
+            <div class="move-list">
+              <div><span class="move-name">Light Chain</span> <span class="move-input">J J J</span></div>
+              <div><span class="move-name">Heavy Slash</span> <span class="move-input">K</span></div>
+              <div><span class="move-name">Uppercut</span> <span class="move-input">L</span></div>
+              <div><span class="move-name">Fireball</span> <span class="move-input">&darr;+L</span></div>
+              <div><span class="move-name">Flame Rush</span> <span class="move-input">&rarr;+L</span></div>
+            </div>
+          </div>
+          <div class="char-card" data-char="voltaic">
+            <div class="char-preview"><canvas id="preview-p2-voltaic" width="200" height="120"></canvas></div>
+            <div class="char-name" style="color:#88ccff">VOLTAIC</div>
+            <div class="char-element">Lightning Element</div>
+            <div class="move-list">
+              <div><span class="move-name">Light Chain</span> <span class="move-input">J J J</span></div>
+              <div><span class="move-name">Heavy Slash</span> <span class="move-input">K</span></div>
+              <div><span class="move-name">Uppercut</span> <span class="move-input">L</span></div>
+              <div><span class="move-name">Bolt Shot</span> <span class="move-input">&darr;+L</span></div>
+              <div><span class="move-name">Thunder Dash</span> <span class="move-input">&rarr;+L</span></div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -212,44 +308,225 @@
   <div id="controls">
     <span id="controls-local">
       P1: WASD move &middot; Z light &middot; X heavy &middot; C special &middot; V block<br>
-      P2: Arrows move &middot; J light &middot; K heavy &middot; L special &middot; ; block
+      P2: Arrows move &middot; J light &middot; K heavy &middot; L special &middot; ; block<br>
+      Special moves: &darr;+Special = Projectile &middot; &rarr;+Special = Dash Strike (costs 25 energy)
     </span>
     <span id="controls-online" style="display:none">
-      WASD move &middot; Z light &middot; X heavy &middot; C special &middot; V block
+      WASD move &middot; Z light &middot; X heavy &middot; C special &middot; V block<br>
+      Special moves: S+C = Projectile &middot; D+C = Dash Strike (costs 25 energy)
     </span>
   </div>
 
   <script type="module">
     import init, { ShadowStrike } from './pkg/client.js';
 
-    let p1Element = null;
-    let p2Element = null;
-    let gameMode = 'local'; // 'local' or 'online'
+    let p1Char = null; // 'inferno' or 'voltaic'
+    let p2Char = null;
+    let gameMode = 'local';
     let game = null;
 
-    // Default relay URL (same host, port 9001)
+    // Character -> element mapping
+    const CHAR_ELEMENT = { inferno: 0, voltaic: 1 };
+
     const RELAY_WS = `ws://${location.hostname || 'localhost'}:9001`;
 
-    // --- Element selection ---
-    function setupSelection(containerId, setter) {
-      const buttons = document.querySelectorAll(`#${containerId} button`);
-      buttons.forEach(btn => {
-        btn.addEventListener('click', () => {
-          buttons.forEach(b => b.classList.remove('selected'));
-          btn.classList.add('selected');
-          setter(parseInt(btn.dataset.element));
+    // --- Draw character previews ---
+    function drawPreview(canvasId, charType, facing) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width, h = canvas.height;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // Dark bg
+      const bg = ctx.createLinearGradient(0, 0, 0, h);
+      bg.addColorStop(0, '#06061a');
+      bg.addColorStop(1, '#0f0f1a');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, w, h);
+
+      // Ground line
+      const groundY = h * 0.82;
+      ctx.strokeStyle = '#333355';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, groundY);
+      ctx.lineTo(w, groundY);
+      ctx.stroke();
+
+      const cx = w / 2;
+      const cy = groundY;
+      const scale = 1.1;
+      const f = facing || 1;
+
+      const color = charType === 'inferno' ? '#ff6600' : '#88ccff';
+      const glow = charType === 'inferno' ? 'rgba(255,102,0,0.35)' : 'rgba(100,180,255,0.35)';
+
+      // Simple silhouette character
+      // Body
+      ctx.strokeStyle = '#080810';
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      // Skeleton points (simplified idle pose)
+      const hx = cx, hy = cy;
+      const tx = cx, ty = cy - 25 * scale;
+      const nx = cx, ny = ty - 20 * scale;
+      const headX = cx, headY = ny - 10 * scale;
+
+      const lsx = cx - 12 * f * scale, lsy = ty - 2 * scale;
+      const rsx = cx + 12 * f * scale, rsy = ty - 2 * scale;
+      const lex = lsx - 10 * f * scale, ley = lsy + 15 * scale;
+      const rex = rsx + 10 * f * scale, rey = rsy + 15 * scale;
+      const lwx = lex - 3 * f * scale, lwy = ley + 14 * scale;
+      const rwx = rex + 3 * f * scale, rwy = rey + 14 * scale;
+
+      const lkx = cx - 6 * f * scale, lky = cy + 20 * scale;
+      const rkx = cx + 6 * f * scale, rky = cy + 20 * scale;
+      const lax = lkx, lay = lky + 22 * scale;
+      const rax = rkx, ray = rky + 22 * scale;
+
+      // Draw thick dark bones
+      function thickBone(x1, y1, x2, y2, w) {
+        ctx.lineWidth = w;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = '#080810';
+      thickBone(hx, hy, tx, ty, 16);
+      thickBone(tx, ty, nx, ny, 13);
+      thickBone(nx, ny, lsx, lsy, 9);
+      thickBone(nx, ny, rsx, rsy, 9);
+      thickBone(lsx, lsy, lex, ley, 7);
+      thickBone(rsx, rsy, rex, rey, 7);
+      thickBone(lex, ley, lwx, lwy, 5);
+      thickBone(rex, rey, rwx, rwy, 5);
+      thickBone(hx, hy, lkx, lky, 10);
+      thickBone(hx, hy, rkx, rky, 10);
+      thickBone(lkx, lky, lax, lay, 7);
+      thickBone(rkx, rky, rax, ray, 7);
+
+      // Head
+      ctx.beginPath();
+      ctx.arc(headX, headY, 9 * scale, 0, Math.PI * 2);
+      ctx.fillStyle = '#080810';
+      ctx.fill();
+
+      // Element overlay
+      ctx.save();
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = glow;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.lineCap = 'round';
+      function bone(x1, y1, x2, y2) {
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+      bone(hx, hy, tx, ty);
+      bone(tx, ty, nx, ny);
+      bone(nx, ny, headX, headY);
+      bone(tx, ty, lsx, lsy);
+      bone(lsx, lsy, lex, ley);
+      bone(lex, ley, lwx, lwy);
+      bone(tx, ty, rsx, rsy);
+      bone(rsx, rsy, rex, rey);
+      bone(rex, rey, rwx, rwy);
+      bone(hx, hy, lkx, lky);
+      bone(lkx, lky, lax, lay);
+      bone(hx, hy, rkx, rky);
+      bone(rkx, rky, rax, ray);
+      ctx.beginPath();
+      ctx.arc(headX, headY, 9 * scale, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+
+      // Eyes
+      ctx.save();
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = color;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(headX + 2.5 * f - 2, headY - 1, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(headX + 2.5 * f + 2, headY - 1, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Daggers
+      function dagger(wx, wy, ex, ey) {
+        const dx = wx - ex, dy = wy - ey;
+        const len = Math.sqrt(dx*dx + dy*dy) || 1;
+        const nx = dx/len, ny = dy/len;
+        const px = -ny, py = nx;
+        const tipX = wx + nx * 22 * scale, tipY = wy + ny * 22 * scale;
+        ctx.beginPath();
+        ctx.moveTo(wx + px * 2.5, wy + py * 2.5);
+        ctx.lineTo(tipX, tipY);
+        ctx.lineTo(wx - px * 2.5, wy - py * 2.5);
+        ctx.closePath();
+        ctx.fillStyle = color;
+        ctx.fill();
+      }
+      dagger(lwx, lwy, lex, ley);
+      dagger(rwx, rwy, rex, rey);
+
+      // Element ambient particles
+      ctx.save();
+      for (let i = 0; i < 6; i++) {
+        const px = cx + (Math.sin(i * 1.7) * 25);
+        const py = cy - 30 - (Math.cos(i * 2.3) * 20);
+        const alpha = 0.3 + Math.sin(i * 0.8) * 0.2;
+        const sz = 1.5 + Math.sin(i * 1.1) * 1;
+        ctx.fillStyle = charType === 'inferno'
+          ? `rgba(255,${80 + i*20},0,${alpha})`
+          : `rgba(${100+i*20},${180+i*10},255,${alpha})`;
+        ctx.beginPath();
+        ctx.arc(px, py, sz, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // --- Character selection ---
+    function setupCharSelect(panelId, setter) {
+      const cards = document.querySelectorAll(`#${panelId} .char-card`);
+      cards.forEach(card => {
+        card.addEventListener('click', () => {
+          cards.forEach(c => {
+            c.classList.remove('selected-fire', 'selected-lightning');
+          });
+          const charType = card.dataset.char;
+          card.classList.add(charType === 'inferno' ? 'selected-fire' : 'selected-lightning');
+          setter(charType);
           checkReady();
         });
       });
     }
-    setupSelection('p1-elements', v => { p1Element = v; });
-    setupSelection('p2-elements', v => { p2Element = v; });
+    setupCharSelect('p1-chars', v => { p1Char = v; });
+    setupCharSelect('p2-chars', v => { p2Char = v; });
+
+    // Draw all preview canvases
+    function drawAllPreviews() {
+      drawPreview('preview-p1-inferno', 'inferno', 1);
+      drawPreview('preview-p1-voltaic', 'voltaic', 1);
+      drawPreview('preview-p2-inferno', 'inferno', -1);
+      drawPreview('preview-p2-voltaic', 'voltaic', -1);
+    }
+    // Draw previews after a frame to ensure canvases are ready
+    requestAnimationFrame(drawAllPreviews);
 
     // --- Mode toggle ---
     const modeLocal = document.getElementById('mode-local');
     const modeOnline = document.getElementById('mode-online');
     const onlinePanel = document.getElementById('online-panel');
-    const p2Select = document.getElementById('p2-select');
+    const p2Panel = document.getElementById('p2-panel');
     const roomStatus = document.getElementById('room-status');
 
     modeLocal.addEventListener('click', () => {
@@ -257,7 +534,7 @@
       modeLocal.classList.add('active');
       modeOnline.classList.remove('active');
       onlinePanel.classList.remove('visible');
-      p2Select.style.display = '';
+      p2Panel.style.display = '';
       checkReady();
     });
 
@@ -266,10 +543,8 @@
       modeOnline.classList.add('active');
       modeLocal.classList.remove('active');
       onlinePanel.classList.add('visible');
-      // In online mode, P2 is remote — hide P2 element selection
-      p2Select.style.display = 'none';
-      // Auto-select a default for P2 so the game can start
-      if (p2Element === null) p2Element = 1;
+      p2Panel.style.display = 'none';
+      if (p2Char === null) p2Char = 'voltaic';
       checkReady();
     });
 
@@ -277,17 +552,19 @@
     let onlineReady = false;
 
     document.getElementById('btn-create').addEventListener('click', async () => {
-      if (p1Element === null) {
-        roomStatus.textContent = 'Select your element first';
+      if (p1Char === null) {
+        roomStatus.textContent = 'Select your character first';
         roomStatus.style.color = '#cc3333';
         return;
       }
       await init();
-      game = new ShadowStrike(p1Element, p2Element || 1);
+      const p1Elem = CHAR_ELEMENT[p1Char];
+      const p2Elem = CHAR_ELEMENT[p2Char || 'voltaic'];
+      game = new ShadowStrike(p1Elem, p2Elem);
       game.create_online_room(RELAY_WS);
 
       game.set_on_room_created((code) => {
-        roomStatus.textContent = `Room: ${code} — waiting for opponent...`;
+        roomStatus.textContent = `Room: ${code} \u2014 waiting for opponent...`;
         roomStatus.style.color = '#33cc33';
         document.getElementById('room-code-input').value = code;
       });
@@ -310,13 +587,15 @@
         roomStatus.style.color = '#cc3333';
         return;
       }
-      if (p1Element === null) {
-        roomStatus.textContent = 'Select your element first';
+      if (p1Char === null) {
+        roomStatus.textContent = 'Select your character first';
         roomStatus.style.color = '#cc3333';
         return;
       }
       await init();
-      game = new ShadowStrike(p1Element, p2Element || 1);
+      const p1Elem = CHAR_ELEMENT[p1Char];
+      const p2Elem = CHAR_ELEMENT[p2Char || 'voltaic'];
+      game = new ShadowStrike(p1Elem, p2Elem);
       game.join_online_room(RELAY_WS, code);
 
       game.set_on_room_joined((pid) => {
@@ -335,14 +614,13 @@
     function checkReady() {
       const btn = document.getElementById('start-btn');
       if (gameMode === 'local') {
-        if (p1Element !== null && p2Element !== null) {
+        if (p1Char !== null && p2Char !== null) {
           btn.classList.add('ready');
         } else {
           btn.classList.remove('ready');
         }
       } else {
-        // Online: need element selected and room joined
-        if (p1Element !== null && onlineReady) {
+        if (p1Char !== null && onlineReady) {
           btn.classList.add('ready');
         } else {
           btn.classList.remove('ready');
@@ -353,23 +631,32 @@
     // --- Start game ---
     document.getElementById('start-btn').addEventListener('click', async () => {
       if (gameMode === 'local') {
-        if (p1Element === null || p2Element === null) return;
+        if (p1Char === null || p2Char === null) return;
         await init();
-        game = new ShadowStrike(p1Element, p2Element);
+        const p1Elem = CHAR_ELEMENT[p1Char];
+        const p2Elem = CHAR_ELEMENT[p2Char];
+        game = new ShadowStrike(p1Elem, p2Elem);
       } else {
         if (!game || !onlineReady) return;
-        // Game already created during room setup
         const indicator = document.getElementById('net-indicator');
         indicator.style.display = 'block';
-        indicator.textContent = 'ONLINE';
+        indicator.textContent = 'ONLINE (RELAY)';
         indicator.classList.add('connected');
+
+        // Periodically check for WebRTC upgrade
+        setInterval(() => {
+          if (game && game.is_p2p()) {
+            indicator.textContent = 'ONLINE (P2P)';
+            indicator.classList.remove('connected');
+            indicator.classList.add('p2p');
+          }
+        }, 500);
       }
 
       document.getElementById('select-screen').style.display = 'none';
       const canvas = document.getElementById('game-canvas');
       canvas.style.display = 'block';
 
-      // Show appropriate controls text
       if (gameMode === 'online') {
         document.getElementById('controls-local').style.display = 'none';
         document.getElementById('controls-online').style.display = '';

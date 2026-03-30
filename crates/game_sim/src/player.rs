@@ -17,6 +17,8 @@ pub enum PlayerAction {
     Uppercut,
     AerialAttack,
     Block,
+    Fireball,
+    DashStrike,
     Hitstun { frames_remaining: i32 },
     Blockstun { frames_remaining: i32 },
     Knockdown { frames_remaining: i32 },
@@ -56,6 +58,8 @@ fn action_duration(action: &PlayerAction) -> i32 {
         PlayerAction::HeavyAttack => 24,
         PlayerAction::Uppercut => 20,
         PlayerAction::AerialAttack => 16,
+        PlayerAction::Fireball => 22,
+        PlayerAction::DashStrike => 18,
         PlayerAction::Getup => 20,
         _ => 0, // no fixed duration
     }
@@ -70,6 +74,7 @@ pub fn attack_damage(action: &PlayerAction) -> i32 {
         PlayerAction::HeavyAttack => 80,
         PlayerAction::Uppercut => 70,
         PlayerAction::AerialAttack => 60,
+        PlayerAction::DashStrike => 65,
         _ => 0,
     }
 }
@@ -83,6 +88,7 @@ pub fn attack_hitstun(action: &PlayerAction) -> i32 {
         PlayerAction::HeavyAttack => 22,
         PlayerAction::Uppercut => 20,
         PlayerAction::AerialAttack => 18,
+        PlayerAction::DashStrike => 18,
         _ => 0,
     }
 }
@@ -96,6 +102,7 @@ fn active_frames(action: &PlayerAction) -> (i32, i32) {
         PlayerAction::HeavyAttack => (8, 14),
         PlayerAction::Uppercut => (5, 12),
         PlayerAction::AerialAttack => (4, 10),
+        PlayerAction::DashStrike => (6, 12),
         _ => (0, 0),
     }
 }
@@ -109,7 +116,17 @@ fn is_attack(action: &PlayerAction) -> bool {
             | PlayerAction::HeavyAttack
             | PlayerAction::Uppercut
             | PlayerAction::AerialAttack
+            | PlayerAction::DashStrike
     )
+}
+
+/// Energy cost for special moves.
+pub fn special_energy_cost(action: &PlayerAction) -> i32 {
+    match action {
+        PlayerAction::Fireball => 25,
+        PlayerAction::DashStrike => 25,
+        _ => 0,
+    }
 }
 
 fn is_stunned(action: &PlayerAction) -> bool {
@@ -169,6 +186,32 @@ impl PlayerState {
             return;
         }
 
+        // Special move combinations (check before basic attacks)
+        if input.is_special() && self.is_grounded {
+            let forward = (input.is_right() && self.facing > 0) || (input.is_left() && self.facing < 0);
+            if input.is_down() && self.energy >= special_energy_cost(&PlayerAction::Fireball) {
+                // Down + Special = Fireball
+                self.energy -= special_energy_cost(&PlayerAction::Fireball);
+                self.action = PlayerAction::Fireball;
+                self.action_frame = 0;
+                self.vx = FixedPoint::ZERO;
+                return;
+            } else if forward && self.energy >= special_energy_cost(&PlayerAction::DashStrike) {
+                // Forward + Special = Dash Strike
+                self.energy -= special_energy_cost(&PlayerAction::DashStrike);
+                self.action = PlayerAction::DashStrike;
+                self.action_frame = 0;
+                self.vx = FixedPoint(PLAYER_SPEED.0 * self.facing as i32 * 3);
+                return;
+            } else {
+                // Special alone = Uppercut
+                self.action = PlayerAction::Uppercut;
+                self.action_frame = 0;
+                self.vx = FixedPoint::ZERO;
+                return;
+            }
+        }
+
         // Attacks
         if input.is_light() && self.is_grounded {
             self.action = PlayerAction::LightAttack1;
@@ -178,12 +221,6 @@ impl PlayerState {
         }
         if input.is_heavy() && self.is_grounded {
             self.action = PlayerAction::HeavyAttack;
-            self.action_frame = 0;
-            self.vx = FixedPoint::ZERO;
-            return;
-        }
-        if input.is_special() && self.is_grounded {
-            self.action = PlayerAction::Uppercut;
             self.action_frame = 0;
             self.vx = FixedPoint::ZERO;
             return;
@@ -270,6 +307,16 @@ impl PlayerState {
     }
 
     pub fn tick_physics(&mut self) {
+        // Dash strike forward movement during active frames
+        if self.action == PlayerAction::DashStrike {
+            let (start, end) = active_frames(&PlayerAction::DashStrike);
+            if self.action_frame >= start && self.action_frame <= end {
+                self.vx = FixedPoint(PLAYER_SPEED.0 * self.facing as i32 * 3);
+            } else {
+                self.vx = FixedPoint::ZERO;
+            }
+        }
+
         // Apply gravity if airborne
         if !self.is_grounded {
             self.vy += GRAVITY;
@@ -357,6 +404,7 @@ impl PlayerState {
             PlayerAction::HeavyAttack => (25, -55, 55, 35),
             PlayerAction::Uppercut => (15, -80, 40, 50),
             PlayerAction::AerialAttack => (20, -40, 45, 35),
+            PlayerAction::DashStrike => (20, -55, 60, 40),
             _ => return [None, None, None, None],
         };
 

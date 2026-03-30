@@ -54,7 +54,7 @@ impl ComboState {
                 | PlayerAction::LightAttack2
                 | PlayerAction::LightAttack3
                 | PlayerAction::HeavyAttack,
-                PlayerAction::Uppercut,
+                PlayerAction::Uppercut | PlayerAction::Fireball | PlayerAction::DashStrike,
             ) => true,
             _ => false,
         }
