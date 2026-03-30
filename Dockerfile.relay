@@ -1,10 +1,53 @@
+# ── Stage 1: Build ────────────────────────────────────────────────────
 FROM rust:1.75-slim AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
-COPY . .
+
+# Copy manifests first for dependency caching
+COPY Cargo.toml Cargo.lock ./
+COPY crates/game_sim/Cargo.toml crates/game_sim/
+COPY crates/relay/Cargo.toml crates/relay/
+COPY crates/client/Cargo.toml crates/client/
+
+# Create dummy source files so cargo can resolve deps
+RUN mkdir -p crates/game_sim/src crates/relay/src crates/client/src && \
+    echo "pub fn stub() {}" > crates/game_sim/src/lib.rs && \
+    echo "fn main() {}" > crates/relay/src/main.rs && \
+    echo "" > crates/client/src/lib.rs
+
+# Build dependencies only (cached layer)
+RUN cargo build --release -p relay 2>/dev/null || true
+
+# Copy actual source code
+COPY crates/ crates/
+
+# Touch source files to invalidate the dummy build
+RUN touch crates/relay/src/main.rs crates/game_sim/src/lib.rs
+
+# Build the relay binary
 RUN cargo build --release -p relay
 
+# ── Stage 2: Runtime ──────────────────────────────────────────────────
 FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -r -s /bin/false relay
+
 COPY --from=builder /app/target/release/relay /usr/local/bin/relay
+
+USER relay
+
 ENV PORT=9001
 EXPOSE 9001
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
+    CMD ["true"]
+
 CMD ["relay"]

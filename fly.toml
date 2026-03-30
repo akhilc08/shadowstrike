@@ -4,9 +4,20 @@ primary_region = "ewr"
 [build]
 dockerfile = "Dockerfile.relay"
 
+[env]
+PORT = "9001"
+
 [[services]]
 internal_port = 9001
 protocol = "tcp"
+auto_stop_machines = false
+auto_start_machines = true
+min_machines_running = 1
+
+  [services.concurrency]
+  type = "connections"
+  hard_limit = 250
+  soft_limit = 200
 
   [[services.ports]]
   port = 80
@@ -15,3 +26,8 @@ protocol = "tcp"
   [[services.ports]]
   port = 443
   handlers = ["tls", "http"]
+
+  [[services.tcp_checks]]
+  grace_period = "10s"
+  interval = "30s"
+  timeout = "5s"

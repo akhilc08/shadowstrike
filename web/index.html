@@ -444,7 +444,10 @@
     // Character -> element mapping
     const CHAR_ELEMENT = { inferno: 0, voltaic: 1 };
 
-    const RELAY_WS = `ws://${location.hostname || 'localhost'}:9001`;
+    // Default relay URL: use wss:// on deployed fly.dev, fallback to local for development
+    const RELAY_WS = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+      ? `ws://${location.hostname}:9001`
+      : 'wss://shadowstrike-relay.fly.dev';
 
     // --- Draw character previews ---
     function drawPreview(canvasId, charType, facing) {
