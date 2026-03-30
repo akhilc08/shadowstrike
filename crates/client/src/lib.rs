@@ -622,51 +622,78 @@ impl ShadowStrike {
                     } else {
                         1.0 - (self.game_state.frame_number as f64 - 60.0) / 30.0
                     };
-                    let color = format!("rgba(255,255,255,{:.2})", alpha);
-                    ctx.set_fill_style_str(&color);
-                    ctx.set_font("bold 48px monospace");
-                    ctx.set_text_align("center");
+
+                    ctx.save();
+                    ctx.set_shadow_blur(20.0);
+
                     if self.game_state.frame_number < 40 {
+                        ctx.set_shadow_color(&format!("rgba(204,153,0,{:.2})", alpha * 0.6));
+                        ctx.set_fill_style_str(&format!("rgba(255,215,0,{:.2})", alpha));
+                        ctx.set_font("bold 52px 'Cinzel', serif");
+                        ctx.set_text_align("center");
                         let text = format!("ROUND {}", self.game_state.round_number);
                         let _ = ctx.fill_text(&text, cx, cy);
                     } else {
+                        ctx.set_shadow_color(&format!("rgba(255,102,0,{:.2})", alpha * 0.8));
+                        ctx.set_fill_style_str(&format!("rgba(255,102,0,{:.2})", alpha));
+                        ctx.set_font("900 60px 'Cinzel Decorative', 'Cinzel', serif");
+                        ctx.set_text_align("center");
                         let _ = ctx.fill_text("FIGHT!", cx, cy);
                     }
+                    ctx.restore();
                 }
             }
             GamePhase::RoundEnd { winner, countdown } => {
-                ctx.set_font("bold 56px monospace");
+                ctx.save();
                 ctx.set_text_align("center");
 
-                // "KO!" flash
                 if countdown > 80 {
+                    // "K.O.!" flash with dramatic glow
+                    ctx.set_shadow_blur(25.0);
+                    ctx.set_shadow_color("rgba(255,51,51,0.7)");
                     ctx.set_fill_style_str("#ff3333");
+                    ctx.set_font("900 64px 'Cinzel Decorative', 'Cinzel', serif");
                     let _ = ctx.fill_text("K.O.!", cx, cy);
                 } else {
+                    ctx.set_shadow_blur(15.0);
+                    ctx.set_shadow_color("rgba(255,215,0,0.4)");
+                    ctx.set_fill_style_str("#ffd700");
+                    ctx.set_font("bold 38px 'Cinzel', serif");
                     let winner_text = format!("Player {} wins the round!", winner + 1);
-                    ctx.set_fill_style_str("#ffffff");
-                    ctx.set_font("bold 36px monospace");
                     let _ = ctx.fill_text(&winner_text, cx, cy);
                 }
+                ctx.restore();
             }
             GamePhase::MatchEnd { winner } => {
-                // Darken background
-                ctx.set_fill_style_str("rgba(0,0,0,0.6)");
+                // Darken background with vignette
+                ctx.set_fill_style_str("rgba(5,0,8,0.65)");
                 ctx.fill_rect(0.0, 0.0, 1200.0, 600.0);
 
-                ctx.set_font("bold 64px monospace");
+                ctx.save();
                 ctx.set_text_align("center");
+
+                // "MATCH OVER" title
+                ctx.set_shadow_blur(30.0);
+                ctx.set_shadow_color("rgba(255,215,0,0.5)");
+                ctx.set_font("900 64px 'Cinzel Decorative', 'Cinzel', serif");
                 ctx.set_fill_style_str("#ffd700");
                 let _ = ctx.fill_text("MATCH OVER", cx, cy - 40.0);
 
-                ctx.set_font("bold 40px monospace");
-                ctx.set_fill_style_str("#ffffff");
+                // Winner text
+                ctx.set_shadow_blur(15.0);
+                ctx.set_shadow_color("rgba(232,224,208,0.3)");
+                ctx.set_font("bold 42px 'Cinzel', serif");
+                ctx.set_fill_style_str("#e8e0d0");
                 let winner_text = format!("Player {} Wins!", winner + 1);
-                let _ = ctx.fill_text(&winner_text, cx, cy + 30.0);
+                let _ = ctx.fill_text(&winner_text, cx, cy + 35.0);
 
-                ctx.set_font("24px monospace");
-                ctx.set_fill_style_str("#888888");
-                let _ = ctx.fill_text("Refresh to play again", cx, cy + 80.0);
+                // Footer
+                ctx.set_shadow_blur(0.0);
+                ctx.set_font("24px 'Cinzel', serif");
+                ctx.set_fill_style_str("#776644");
+                let _ = ctx.fill_text("Refresh to play again", cx, cy + 85.0);
+
+                ctx.restore();
             }
         }
     }
