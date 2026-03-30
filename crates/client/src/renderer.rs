@@ -507,3 +507,90 @@ pub fn render_projectiles(ctx: &CanvasRenderingContext2d, projectiles: &[Project
         ctx.restore();
     }
 }
+
+pub fn render_debug_overlay(
+    ctx: &CanvasRenderingContext2d,
+    state: &GameState,
+    p1_input: game_sim::input::Input,
+    p2_input: game_sim::input::Input,
+) {
+    let active_projectiles = state.projectiles.iter().filter(|p| p.active).count();
+
+    fn action_name(p: &PlayerState) -> &'static str {
+        use game_sim::player::PlayerAction::*;
+        match p.action {
+            Idle => "Idle",
+            WalkForward => "WalkFwd",
+            WalkBack => "WalkBack",
+            Jump => "Jump",
+            Crouch => "Crouch",
+            LightAttack1 => "Light1",
+            LightAttack2 => "Light2",
+            LightAttack3 => "Light3",
+            HeavyAttack => "Heavy",
+            Uppercut => "Uppercut",
+            AerialAttack => "Aerial",
+            Block => "Block",
+            Fireball => "Fireball",
+            DashStrike => "DashStrike",
+            Hitstun { .. } => "Hitstun",
+            Blockstun { .. } => "Blockstun",
+            Knockdown { .. } => "Knockdown",
+            Getup => "Getup",
+        }
+    }
+
+    fn input_str(input: game_sim::input::Input) -> String {
+        let mut parts = Vec::new();
+        if input.is_left() { parts.push("L"); }
+        if input.is_right() { parts.push("R"); }
+        if input.is_up() { parts.push("U"); }
+        if input.is_down() { parts.push("D"); }
+        if input.is_light() { parts.push("lt"); }
+        if input.is_heavy() { parts.push("hv"); }
+        if input.is_special() { parts.push("sp"); }
+        if input.is_block() { parts.push("bl"); }
+        if parts.is_empty() { return format!("0x{:02X} (none)", input.0); }
+        format!("0x{:02X} ({})", input.0, parts.join("+"))
+    }
+
+    // Semi-transparent background panel
+    ctx.save();
+    ctx.set_fill_style_str("rgba(0,0,0,0.75)");
+    ctx.fill_rect(0.0, 80.0, 320.0, 170.0);
+
+    ctx.set_font("12px monospace");
+    ctx.set_text_align("left");
+    ctx.set_fill_style_str("#00ff88");
+
+    let lines = [
+        format!("F1 DEBUG  frame:{}", state.frame_number),
+        format!("P1 input: {}", input_str(p1_input)),
+        format!("P1 state: {} f:{} energy:{} hp:{}",
+            action_name(&state.players[0]),
+            state.players[0].action_frame,
+            state.players[0].energy,
+            state.players[0].health),
+        format!("P2 input: {}", input_str(p2_input)),
+        format!("P2 state: {} f:{} energy:{} hp:{}",
+            action_name(&state.players[1]),
+            state.players[1].action_frame,
+            state.players[1].energy,
+            state.players[1].health),
+        format!("Projectiles: {}/{}", active_projectiles, MAX_PROJECTILES),
+        format!("P1 pos: ({},{}) grounded:{}",
+            state.players[0].x.to_f32() as i32,
+            state.players[0].y.to_f32() as i32,
+            state.players[0].is_grounded),
+        format!("P2 pos: ({},{}) grounded:{}",
+            state.players[1].x.to_f32() as i32,
+            state.players[1].y.to_f32() as i32,
+            state.players[1].is_grounded),
+    ];
+
+    for (i, line) in lines.iter().enumerate() {
+        let _ = ctx.fill_text(line, 8.0, 96.0 + i as f64 * 18.0);
+    }
+
+    ctx.restore();
+}

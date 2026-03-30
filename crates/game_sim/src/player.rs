@@ -121,6 +121,7 @@ fn is_attack(action: &PlayerAction) -> bool {
             | PlayerAction::Uppercut
             | PlayerAction::AerialAttack
             | PlayerAction::DashStrike
+            | PlayerAction::Fireball
     )
 }
 

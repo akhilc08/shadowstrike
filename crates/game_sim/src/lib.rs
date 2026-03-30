@@ -202,7 +202,7 @@ impl GameState {
 
                 // Energy gain for attacker
                 self.players[attacker_idx].energy =
-                    (self.players[attacker_idx].energy + 5).min(MAX_ENERGY);
+                    (self.players[attacker_idx].energy + ENERGY_PER_HIT).min(MAX_ENERGY);
             }
         }
 

@@ -158,6 +158,10 @@ pub struct ShadowStrike {
     bell_played: bool,
     // Touch input from mobile virtual gamepad
     touch_input: Input,
+    // Debug overlay (F1 toggle)
+    debug_overlay: bool,
+    last_p1_input: Input,
+    last_p2_input: Input,
 }
 
 #[wasm_bindgen]
@@ -185,6 +189,9 @@ impl ShadowStrike {
             screen_shake_intensity: 0.0,
             bell_played: false,
             touch_input: Input(0),
+            debug_overlay: false,
+            last_p1_input: Input(0),
+            last_p2_input: Input(0),
         }
     }
 
@@ -251,6 +258,10 @@ impl ShadowStrike {
     }
 
     pub fn key_down(&mut self, key: String) {
+        if key == "F1" {
+            self.debug_overlay = !self.debug_overlay;
+            return;
+        }
         self.keys.insert(key);
     }
 
@@ -401,6 +412,10 @@ impl ShadowStrike {
             let p2 = input_handler::read_p2_input(&self.keys);
             (p1, p2)
         };
+
+        // Track inputs for debug overlay
+        self.last_p1_input = p1_input;
+        self.last_p2_input = p2_input;
 
         // Store health before tick for hit detection
         let health_before = [
@@ -576,6 +591,16 @@ impl ShadowStrike {
 
         if self.screen_shake_frames > 0 {
             ctx.restore();
+        }
+
+        // F1 debug overlay (drawn after shake restore so it's stable)
+        if self.debug_overlay {
+            renderer::render_debug_overlay(
+                &ctx,
+                &self.game_state,
+                self.last_p1_input,
+                self.last_p2_input,
+            );
         }
     }
 
