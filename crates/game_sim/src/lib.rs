@@ -128,11 +128,11 @@ impl GameState {
                         active: true,
                         x: self.players[i].x + FixedPoint::from_int(30 * facing),
                         y: self.players[i].y - FixedPoint::from_int(50),
-                        vx: FixedPoint::from_int(8 * facing),
+                        vx: FixedPoint::from_int(PROJECTILE_SPEED * facing),
                         owner: i,
-                        damage: 50,
-                        hitstun: 16,
-                        lifetime: 90,
+                        damage: PROJECTILE_DAMAGE,
+                        hitstun: PROJECTILE_HITSTUN,
+                        lifetime: PROJECTILE_LIFETIME,
                         element: self.players[i].element,
                     };
                 }
@@ -172,7 +172,7 @@ impl GameState {
                     let attacker_idx = self.projectiles[pi].owner;
                     self.players[defender_idx].take_hit(damage, hitstun, element);
                     self.hit_this_frame[attacker_idx] = true;
-                    self.players[attacker_idx].energy = (self.players[attacker_idx].energy + 5).min(MAX_ENERGY);
+                    self.players[attacker_idx].energy = (self.players[attacker_idx].energy + ENERGY_PER_HIT).min(MAX_ENERGY);
                     self.projectiles[pi].active = false;
                     break;
                 }

@@ -66,29 +66,33 @@ fn action_duration(action: &PlayerAction) -> i32 {
 }
 
 /// Damage dealt by an attack.
+/// Tuned so full L1-L2-L3 chain = 85 dmg (~7% of 1200 HP), rewarding full combos.
+/// Heavy/specials deal more but are slower and riskier.
 pub fn attack_damage(action: &PlayerAction) -> i32 {
     match action {
-        PlayerAction::LightAttack1 => 30,
-        PlayerAction::LightAttack2 => 35,
-        PlayerAction::LightAttack3 => 50,
-        PlayerAction::HeavyAttack => 80,
-        PlayerAction::Uppercut => 70,
-        PlayerAction::AerialAttack => 60,
-        PlayerAction::DashStrike => 65,
+        PlayerAction::LightAttack1 => 25,  // fast jab, low commitment
+        PlayerAction::LightAttack2 => 30,  // chain follow-up
+        PlayerAction::LightAttack3 => 40,  // chain finisher, slight knockback
+        PlayerAction::HeavyAttack => 70,   // slow wind-up, causes knockdown
+        PlayerAction::Uppercut => 60,      // anti-air launcher
+        PlayerAction::AerialAttack => 50,  // air-to-air or jump-in
+        PlayerAction::DashStrike => 55,    // gap closer, costs meter
         _ => 0,
     }
 }
 
 /// Base hitstun frames for an attack.
+/// Light hitstun just long enough to chain into next light on hit.
+/// Heavy/special hitstun gives advantage but doesn't guarantee follow-up without reads.
 pub fn attack_hitstun(action: &PlayerAction) -> i32 {
     match action {
-        PlayerAction::LightAttack1 => 12,
-        PlayerAction::LightAttack2 => 14,
-        PlayerAction::LightAttack3 => 16,
-        PlayerAction::HeavyAttack => 22,
-        PlayerAction::Uppercut => 20,
-        PlayerAction::AerialAttack => 18,
-        PlayerAction::DashStrike => 18,
+        PlayerAction::LightAttack1 => 10,  // tight link window to L2
+        PlayerAction::LightAttack2 => 12,  // chains into L3 on hit
+        PlayerAction::LightAttack3 => 14,  // slight advantage on hit, combo ender
+        PlayerAction::HeavyAttack => 20,   // big advantage, can follow up
+        PlayerAction::Uppercut => 18,      // launcher hitstun
+        PlayerAction::AerialAttack => 15,  // air reset
+        PlayerAction::DashStrike => 16,    // dash-in advantage
         _ => 0,
     }
 }
@@ -120,11 +124,11 @@ fn is_attack(action: &PlayerAction) -> bool {
     )
 }
 
-/// Energy cost for special moves.
+/// Energy cost for special moves — 30 energy limits spam to ~3 specials from full meter.
 pub fn special_energy_cost(action: &PlayerAction) -> i32 {
     match action {
-        PlayerAction::Fireball => 25,
-        PlayerAction::DashStrike => 25,
+        PlayerAction::Fireball => SPECIAL_ENERGY_COST,
+        PlayerAction::DashStrike => SPECIAL_ENERGY_COST,
         _ => 0,
     }
 }
@@ -201,7 +205,7 @@ impl PlayerState {
                 self.energy -= special_energy_cost(&PlayerAction::DashStrike);
                 self.action = PlayerAction::DashStrike;
                 self.action_frame = 0;
-                self.vx = FixedPoint(PLAYER_SPEED.0 * self.facing as i32 * 3);
+                self.vx = FixedPoint(PLAYER_SPEED.0 * self.facing as i32 * DASH_STRIKE_SPEED_MULT);
                 return;
             } else {
                 // Special alone = Uppercut
@@ -311,7 +315,7 @@ impl PlayerState {
         if self.action == PlayerAction::DashStrike {
             let (start, end) = active_frames(&PlayerAction::DashStrike);
             if self.action_frame >= start && self.action_frame <= end {
-                self.vx = FixedPoint(PLAYER_SPEED.0 * self.facing as i32 * 3);
+                self.vx = FixedPoint(PLAYER_SPEED.0 * self.facing as i32 * DASH_STRIKE_SPEED_MULT);
             } else {
                 self.vx = FixedPoint::ZERO;
             }
@@ -431,18 +435,21 @@ impl PlayerState {
         }
 
         if self.action == PlayerAction::Block {
-            // Chip damage (25%)
-            self.health += damage - damage / 4;
+            // Chip damage: BLOCK_CHIP_PERCENT% of attack damage — blocking is safe but not free
+            let chip = damage * BLOCK_CHIP_PERCENT / 100;
+            self.health += damage - chip;
             if self.health > MAX_HEALTH {
                 self.health = MAX_HEALTH;
             }
             self.guard_meter -= 10;
+            // Blockstun: shorter than hitstun so defender can act sooner
+            let blockstun = (hitstun as i64 * BLOCKSTUN_RATIO as i64 / 1000) as i32;
             self.action = PlayerAction::Blockstun {
-                frames_remaining: hitstun / 2,
+                frames_remaining: blockstun.max(4),
             };
-        } else if damage >= 80 && self.is_grounded {
+        } else if damage >= KNOCKDOWN_THRESHOLD && self.is_grounded {
             self.action = PlayerAction::Knockdown {
-                frames_remaining: 30,
+                frames_remaining: KNOCKDOWN_FRAMES,
             };
         } else {
             self.action = PlayerAction::Hitstun {

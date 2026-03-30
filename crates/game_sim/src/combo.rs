@@ -1,3 +1,4 @@
+use crate::constants::{COMBO_DECAY_PER_HIT, COMBO_MIN_SCALE};
 use crate::fixed::FixedPoint;
 use crate::player::PlayerAction;
 
@@ -22,13 +23,13 @@ impl ComboState {
     }
 
     /// Register a hit and return the current hitstun scale factor.
-    /// Hitstun scales down as combo grows to prevent infinites.
+    /// Hitstun scales down by COMBO_DECAY_PER_HIT per subsequent hit to prevent infinites.
+    /// Practical combo limit is ~6 hits before hitstun floors at COMBO_MIN_SCALE.
     pub fn register_hit(&mut self) -> FixedPoint {
         self.hit_count += 1;
-        // Scale: 1.0 for first hit, decreasing by 5% per subsequent hit, min 0.3
-        let reduction = FixedPoint(50) * FixedPoint::from_int(self.hit_count - 1);
+        let reduction = FixedPoint(COMBO_DECAY_PER_HIT) * FixedPoint::from_int(self.hit_count - 1);
         let scale = FixedPoint::ONE - FixedPoint(reduction.0 / 1000);
-        let min_scale = FixedPoint(300); // 0.3
+        let min_scale = FixedPoint(COMBO_MIN_SCALE);
         self.hitstun_scale = if scale > min_scale { scale } else { min_scale };
         self.hitstun_scale
     }

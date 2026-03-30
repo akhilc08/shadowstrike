@@ -131,9 +131,10 @@ fn test_health_bounds() {
                 state.players[i].health
             );
             assert!(
-                state.players[i].health <= 1000,
-                "Player {} health above 1000: {}",
+                state.players[i].health <= game_sim::constants::MAX_HEALTH,
+                "Player {} health above {}: {}",
                 i,
+                game_sim::constants::MAX_HEALTH,
                 state.players[i].health
             );
         }
