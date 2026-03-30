@@ -1,1 +1,17 @@
-/target
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# Node
+node_modules/
+
+# WASM build output
+dist/
+pkg/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
