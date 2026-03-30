@@ -8,8 +8,9 @@ use relay::room;
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let addr = "0.0.0.0:8080";
-    let listener = TcpListener::bind(addr).await.expect("Failed to bind");
+    let port = std::env::var("PORT").unwrap_or_else(|_| "9001".to_string());
+    let addr = format!("0.0.0.0:{}", port);
+    let listener = TcpListener::bind(&addr).await.expect("Failed to bind");
     info!("Relay server listening on {}", addr);
 
     let rooms = room::new_room_map();

@@ -5,7 +5,7 @@ primary_region = "ewr"
 dockerfile = "Dockerfile.relay"
 
 [[services]]
-internal_port = 8080
+internal_port = 9001
 protocol = "tcp"
 
   [[services.ports]]

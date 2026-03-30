@@ -5,5 +5,6 @@ RUN cargo build --release -p relay
 
 FROM debian:bookworm-slim
 COPY --from=builder /app/target/release/relay /usr/local/bin/relay
-EXPOSE 8080
+ENV PORT=9001
+EXPOSE 9001
 CMD ["relay"]
