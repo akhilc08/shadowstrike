@@ -316,9 +316,162 @@
     #controls { display: none; }
     body { overflow: hidden; }
   }
+
+  /* ── Loading overlay ── */
+  #loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: #050510;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    transition: opacity 0.4s;
+  }
+  #loading-overlay.hidden { opacity: 0; pointer-events: none; }
+  .loading-title {
+    font-size: 2rem;
+    color: #fff;
+    letter-spacing: 8px;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+    text-shadow: 0 0 20px rgba(255,120,0,0.3);
+  }
+  .loading-bar-outer {
+    width: 240px;
+    height: 4px;
+    background: #1a1a2e;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .loading-bar-inner {
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(90deg, #ff6600, #88ccff);
+    transition: width 0.3s;
+  }
+  .loading-status {
+    margin-top: 12px;
+    font-size: 0.75rem;
+    color: #555;
+    letter-spacing: 2px;
+  }
+
+  /* ── How to Play overlay ── */
+  #how-to-play {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(5,5,16,0.92);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+  }
+  #how-to-play.visible { display: flex; }
+  .htp-content {
+    max-width: 600px;
+    padding: 30px;
+    border: 1px solid #333;
+    background: #0a0a14;
+    position: relative;
+  }
+  .htp-content h2 {
+    font-size: 1.2rem;
+    color: #fff;
+    letter-spacing: 3px;
+    margin-bottom: 16px;
+    text-align: center;
+  }
+  .htp-content table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.75rem;
+    margin-bottom: 14px;
+  }
+  .htp-content th {
+    text-align: left;
+    color: #ff6600;
+    padding: 4px 8px;
+    border-bottom: 1px solid #333;
+  }
+  .htp-content td {
+    padding: 4px 8px;
+    color: #aaa;
+  }
+  .htp-content td:first-child { color: #ccc; font-weight: bold; }
+  .htp-section {
+    margin-bottom: 12px;
+    font-size: 0.75rem;
+    color: #888;
+    line-height: 1.7;
+  }
+  .htp-section strong { color: #ccc; }
+  .htp-close {
+    position: absolute;
+    top: 10px;
+    right: 14px;
+    background: none;
+    border: none;
+    color: #666;
+    font-size: 1.2rem;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .htp-close:hover { color: #fff; }
+  #btn-how-to-play {
+    padding: 6px 16px;
+    border: 1px solid #333;
+    background: #111;
+    color: #666;
+    font-family: inherit;
+    font-size: 0.75rem;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+  #btn-how-to-play:hover { color: #ccc; border-color: #555; }
+
+  /* ── Connection error banner ── */
+  #conn-error {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 10px;
+    background: rgba(180,30,30,0.9);
+    color: #fff;
+    font-size: 0.8rem;
+    text-align: center;
+    z-index: 300;
+  }
+  #conn-error.visible { display: block; }
+  #conn-error button {
+    margin-left: 12px;
+    padding: 3px 12px;
+    border: 1px solid #fff;
+    background: transparent;
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
+  <!-- Loading overlay (shown while WASM initializes) -->
+  <div id="loading-overlay">
+    <div class="loading-title">ShadowStrike</div>
+    <div class="loading-bar-outer"><div class="loading-bar-inner" id="loading-bar"></div></div>
+    <div class="loading-status" id="loading-status">Loading engine...</div>
+  </div>
+
+  <!-- Connection error banner -->
+  <div id="conn-error">
+    Connection to relay server failed. Check your internet connection.
+    <button id="conn-error-dismiss">Dismiss</button>
+  </div>
+
   <h1>ShadowStrike</h1>
   <div class="subtitle">ROLLBACK NETCODE FIGHTING</div>
 
@@ -402,6 +555,7 @@
     </div>
 
     <button id="start-btn">FIGHT</button>
+    <button id="btn-how-to-play">How to Play</button>
   </div>
 
   <canvas id="game-canvas" width="1200" height="600"></canvas>
@@ -421,15 +575,45 @@
     </div>
   </div>
 
+  <!-- How to Play overlay -->
+  <div id="how-to-play">
+    <div class="htp-content">
+      <button class="htp-close" id="htp-close">&times;</button>
+      <h2>HOW TO PLAY</h2>
+      <table>
+        <tr><th>Action</th><th>Player 1</th><th>Player 2</th></tr>
+        <tr><td>Move</td><td>WASD</td><td>Arrow keys</td></tr>
+        <tr><td>Light Attack</td><td>Z</td><td>J</td></tr>
+        <tr><td>Heavy Attack</td><td>X</td><td>K</td></tr>
+        <tr><td>Special</td><td>C</td><td>L</td></tr>
+        <tr><td>Block</td><td>V</td><td>;</td></tr>
+      </table>
+      <div class="htp-section">
+        <strong>Special Moves</strong> (cost 30 energy):<br>
+        Down + Special = Projectile<br>
+        Forward + Special = Dash Strike<br>
+        Special alone = Uppercut
+      </div>
+      <div class="htp-section">
+        <strong>Combos:</strong> Chain light attacks (Z/J x3), cancel into heavy or specials.<br>
+        <strong>Blocking:</strong> Hold block to reduce damage to 20% chip. Blockstun is shorter than hitstun.<br>
+        <strong>Energy:</strong> Gain 8 energy per hit landed. Specials cost 30.
+      </div>
+      <div class="htp-section">
+        <strong>Win condition:</strong> Best of 3 rounds, 60 seconds each. KO or highest health at time-up wins.
+      </div>
+    </div>
+  </div>
+
   <div id="controls">
     <span id="controls-local">
       P1: WASD move &middot; Z light &middot; X heavy &middot; C special &middot; V block<br>
       P2: Arrows move &middot; J light &middot; K heavy &middot; L special &middot; ; block<br>
-      Special moves: &darr;+Special = Projectile &middot; &rarr;+Special = Dash Strike (costs 25 energy)
+      Special moves: &darr;+Special = Projectile &middot; &rarr;+Special = Dash Strike (costs 30 energy)
     </span>
     <span id="controls-online" style="display:none">
       WASD move &middot; Z light &middot; X heavy &middot; C special &middot; V block<br>
-      Special moves: S+C = Projectile &middot; D+C = Dash Strike (costs 25 energy)
+      Special moves: S+C = Projectile &middot; D+C = Dash Strike (costs 30 energy)
     </span>
   </div>
 
@@ -440,6 +624,7 @@
     let p2Char = null;
     let gameMode = 'local';
     let game = null;
+    let wasmReady = false;
 
     // Character -> element mapping
     const CHAR_ELEMENT = { inferno: 0, voltaic: 1 };
@@ -448,6 +633,64 @@
     const RELAY_WS = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
       ? `ws://${location.hostname}:9001`
       : 'wss://shadowstrike-relay.fly.dev';
+
+    // ── Loading screen ──────────────────────────────────────────────────
+    const loadingBar = document.getElementById('loading-bar');
+    const loadingStatus = document.getElementById('loading-status');
+    const loadingOverlay = document.getElementById('loading-overlay');
+
+    loadingBar.style.width = '30%';
+    loadingStatus.textContent = 'Compiling WebAssembly...';
+
+    init().then(() => {
+      wasmReady = true;
+      loadingBar.style.width = '100%';
+      loadingStatus.textContent = 'Ready!';
+      setTimeout(() => { loadingOverlay.classList.add('hidden'); }, 300);
+    }).catch(err => {
+      loadingStatus.textContent = 'Failed to load engine. Try refreshing.';
+      loadingBar.style.width = '100%';
+      loadingBar.parentElement.querySelector('.loading-bar-inner').style.background = '#cc3333';
+      console.error('WASM init failed:', err);
+    });
+
+    // ── Connection error handling ───────────────────────────────────────
+    const connError = document.getElementById('conn-error');
+    document.getElementById('conn-error-dismiss').addEventListener('click', () => {
+      connError.classList.remove('visible');
+    });
+    function showConnError(msg) {
+      connError.textContent = msg || 'Connection to relay server failed.';
+      const btn = document.createElement('button');
+      btn.textContent = 'Dismiss';
+      btn.addEventListener('click', () => connError.classList.remove('visible'));
+      connError.appendChild(btn);
+      connError.classList.add('visible');
+    }
+
+    // ── How to Play overlay ─────────────────────────────────────────────
+    document.getElementById('btn-how-to-play').addEventListener('click', () => {
+      document.getElementById('how-to-play').classList.add('visible');
+    });
+    document.getElementById('htp-close').addEventListener('click', () => {
+      document.getElementById('how-to-play').classList.remove('visible');
+    });
+    document.getElementById('how-to-play').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) {
+        e.currentTarget.classList.remove('visible');
+      }
+    });
+
+    // ── Cross-browser: resume AudioContext on user gesture (Safari/iOS) ─
+    function ensureAudioContext() {
+      // Safari requires AudioContext to be resumed after a user gesture
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) {
+        const ctx = new AC();
+        if (ctx.state === 'suspended') { ctx.resume(); }
+        ctx.close();
+      }
+    }
 
     // --- Draw character previews ---
     function drawPreview(canvasId, charType, facing) {
@@ -676,7 +919,13 @@
         roomStatus.style.color = '#cc3333';
         return;
       }
-      await init();
+      if (!wasmReady) {
+        roomStatus.textContent = 'Still loading, please wait...';
+        roomStatus.style.color = '#cc3333';
+        return;
+      }
+      roomStatus.textContent = 'Connecting to relay...';
+      roomStatus.style.color = '#888';
       const p1Elem = CHAR_ELEMENT[p1Char];
       const p2Elem = CHAR_ELEMENT[p2Char || 'voltaic'];
       game = new ShadowStrike(p1Elem, p2Elem);
@@ -696,7 +945,18 @@
       game.set_on_net_error((msg) => {
         roomStatus.textContent = `Error: ${msg}`;
         roomStatus.style.color = '#cc3333';
+        if (msg && (msg.includes('connect') || msg.includes('WebSocket'))) {
+          showConnError(`Relay connection failed: ${msg}. Is the relay server running?`);
+        }
       });
+
+      // Timeout: if no room created after 8 seconds, show error
+      setTimeout(() => {
+        if (!game.room_code()) {
+          roomStatus.textContent = 'Connection timed out. Relay may be offline.';
+          roomStatus.style.color = '#cc3333';
+        }
+      }, 8000);
     });
 
     document.getElementById('btn-join').addEventListener('click', async () => {
@@ -711,7 +971,13 @@
         roomStatus.style.color = '#cc3333';
         return;
       }
-      await init();
+      if (!wasmReady) {
+        roomStatus.textContent = 'Still loading, please wait...';
+        roomStatus.style.color = '#cc3333';
+        return;
+      }
+      roomStatus.textContent = 'Joining room...';
+      roomStatus.style.color = '#888';
       const p1Elem = CHAR_ELEMENT[p1Char];
       const p2Elem = CHAR_ELEMENT[p2Char || 'voltaic'];
       game = new ShadowStrike(p1Elem, p2Elem);
@@ -726,6 +992,9 @@
       game.set_on_net_error((msg) => {
         roomStatus.textContent = `Error: ${msg}`;
         roomStatus.style.color = '#cc3333';
+        if (msg && msg.includes('not found')) {
+          roomStatus.textContent = `Room "${code}" not found. Check the code and try again.`;
+        }
       });
     });
 
@@ -749,9 +1018,10 @@
 
     // --- Start game ---
     document.getElementById('start-btn').addEventListener('click', async () => {
+      ensureAudioContext(); // Safari/iOS: resume audio on user gesture
       if (gameMode === 'local') {
         if (p1Char === null || p2Char === null) return;
-        await init();
+        if (!wasmReady) { await init(); }
         const p1Elem = CHAR_ELEMENT[p1Char];
         const p2Elem = CHAR_ELEMENT[p2Char];
         game = new ShadowStrike(p1Elem, p2Elem);
