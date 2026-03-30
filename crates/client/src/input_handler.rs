@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use game_sim::Input;
+use game_sim::input::Input;
 
 /// Player 1: WASD + Z (light) + X (heavy) + C (special) + V (block)
 pub fn read_p1_input(keys: &HashSet<String>) -> Input {

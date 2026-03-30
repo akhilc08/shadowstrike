@@ -1,4 +1,4 @@
-use game_sim::Element;
+use game_sim::player::Element;
 use wasm_bindgen::JsValue;
 use web_sys::CanvasRenderingContext2d;
 
@@ -198,26 +198,20 @@ fn element_style(element: Element, effect: EffectType) -> (u8, u8, u8, ParticleB
                 EffectType::WalkDust => ParticleBehavior::GravityAffected,
                 _ => ParticleBehavior::Standard,
             };
-            (255, 140, 20, behavior) // orange
+            (255, 140, 20, behavior)
         }
         Element::Lightning => {
-            let behavior = match effect {
-                EffectType::HitImpact | EffectType::SpecialActivation => ParticleBehavior::Standard,
-                _ => ParticleBehavior::Standard,
-            };
-            (180, 210, 255, behavior) // blue-white
+            (180, 210, 255, ParticleBehavior::Standard)
         }
         Element::DarkMagic => {
-            let angle = 0.0_f32;
-            (160, 50, 220, ParticleBehavior::Spiral { angle }) // purple
+            (160, 50, 220, ParticleBehavior::Spiral { angle: 0.0 })
         }
         Element::Ice => {
-            (150, 240, 255, ParticleBehavior::DecelerateToStop) // cyan
+            (150, 240, 255, ParticleBehavior::DecelerateToStop)
         }
     }
 }
 
-/// Simple deterministic pseudo-random in [0, 1).
 fn pseudo_rand(seed: f32) -> f32 {
     let x = (seed * 12.9898 + 78.233).sin() * 43758.5453;
     x - x.floor()

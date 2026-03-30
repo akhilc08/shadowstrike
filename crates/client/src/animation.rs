@@ -1,4 +1,4 @@
-use game_sim::PlayerAction;
+use game_sim::player::PlayerAction;
 
 pub const NUM_JOINTS: usize = 14;
 
@@ -68,6 +68,7 @@ pub enum AnimId {
     WalkForward,
     WalkBack,
     Jump,
+    Crouch,
     LightAttack1,
     LightAttack2,
     LightAttack3,
@@ -82,12 +83,13 @@ pub enum AnimId {
 }
 
 impl AnimId {
-    pub fn from_action(action: PlayerAction) -> Self {
+    pub fn from_action(action: &PlayerAction) -> Self {
         match action {
             PlayerAction::Idle => AnimId::Idle,
             PlayerAction::WalkForward => AnimId::WalkForward,
             PlayerAction::WalkBack => AnimId::WalkBack,
             PlayerAction::Jump => AnimId::Jump,
+            PlayerAction::Crouch => AnimId::Crouch,
             PlayerAction::LightAttack1 => AnimId::LightAttack1,
             PlayerAction::LightAttack2 => AnimId::LightAttack2,
             PlayerAction::LightAttack3 => AnimId::LightAttack3,
@@ -95,9 +97,9 @@ impl AnimId {
             PlayerAction::Uppercut => AnimId::Uppercut,
             PlayerAction::AerialAttack => AnimId::AerialAttack,
             PlayerAction::Block => AnimId::Block,
-            PlayerAction::Hitstun => AnimId::Hitstun,
-            PlayerAction::Blockstun => AnimId::Blockstun,
-            PlayerAction::Knockdown => AnimId::Knockdown,
+            PlayerAction::Hitstun { .. } => AnimId::Hitstun,
+            PlayerAction::Blockstun { .. } => AnimId::Blockstun,
+            PlayerAction::Knockdown { .. } => AnimId::Knockdown,
             PlayerAction::Getup => AnimId::Getup,
         }
     }
@@ -182,17 +184,13 @@ pub fn get_animation(id: AnimId) -> Animation {
     let bp = base_pose();
     match id {
         AnimId::Idle => {
-            // Slight breathing bob, 60-frame loop
             let up = offset_joints(&bp, &[
                 (JointId::Torso as usize, 0.0, -1.5),
                 (JointId::Head as usize, 0.0, -0.5),
             ]);
             let down = bp;
             Animation {
-                keyframes: vec![
-                    make_keyframe(up, 30),
-                    make_keyframe(down, 30),
-                ],
+                keyframes: vec![make_keyframe(up, 30), make_keyframe(down, 30)],
                 looping: true,
             }
         }
@@ -212,10 +210,7 @@ pub fn get_animation(id: AnimId) -> Animation {
                 (JointId::LShoulder as usize, -2.0, 0.0),
             ]);
             Animation {
-                keyframes: vec![
-                    make_keyframe(step1, 10),
-                    make_keyframe(step2, 10),
-                ],
+                keyframes: vec![make_keyframe(step1, 10), make_keyframe(step2, 10)],
                 looping: true,
             }
         }
@@ -231,10 +226,7 @@ pub fn get_animation(id: AnimId) -> Animation {
                 (JointId::LKnee as usize, 2.0, 2.0),
             ]);
             Animation {
-                keyframes: vec![
-                    make_keyframe(step1, 12),
-                    make_keyframe(step2, 12),
-                ],
+                keyframes: vec![make_keyframe(step1, 12), make_keyframe(step2, 12)],
                 looping: true,
             }
         }
@@ -260,8 +252,21 @@ pub fn get_animation(id: AnimId) -> Animation {
                 looping: false,
             }
         }
+        AnimId::Crouch => {
+            let crouched = offset_joints(&bp, &[
+                (JointId::Hips as usize, 0.0, 15.0),
+                (JointId::Torso as usize, 0.0, -5.0),
+                (JointId::LKnee as usize, -5.0, -10.0),
+                (JointId::RKnee as usize, 5.0, -10.0),
+                (JointId::LAnkle as usize, -3.0, -5.0),
+                (JointId::RAnkle as usize, 3.0, -5.0),
+            ]);
+            Animation {
+                keyframes: vec![make_keyframe(crouched, 60)],
+                looping: true,
+            }
+        }
         AnimId::LightAttack1 => {
-            // Startup, active, recovery
             let startup = offset_joints(&bp, &[
                 (JointId::RElbow as usize, 5.0, -8.0),
                 (JointId::RWrist as usize, 8.0, -10.0),
@@ -407,10 +412,7 @@ pub fn get_animation(id: AnimId) -> Animation {
                 (JointId::Hips as usize, -3.0, 2.0),
             ]);
             Animation {
-                keyframes: vec![
-                    make_keyframe(recoil, 4),
-                    make_keyframe(bp, 6),
-                ],
+                keyframes: vec![make_keyframe(recoil, 4), make_keyframe(bp, 6)],
                 looping: false,
             }
         }
@@ -422,10 +424,7 @@ pub fn get_animation(id: AnimId) -> Animation {
                 (JointId::Torso as usize, -3.0, 1.0),
             ]);
             Animation {
-                keyframes: vec![
-                    make_keyframe(push, 3),
-                    make_keyframe(bp, 5),
-                ],
+                keyframes: vec![make_keyframe(push, 3), make_keyframe(bp, 5)],
                 looping: false,
             }
         }
@@ -442,9 +441,7 @@ pub fn get_animation(id: AnimId) -> Animation {
                 (JointId::RWrist as usize, 8.0, 5.0),
             ]);
             Animation {
-                keyframes: vec![
-                    make_keyframe(fall, 15),
-                ],
+                keyframes: vec![make_keyframe(fall, 15)],
                 looping: false,
             }
         }
@@ -456,10 +453,7 @@ pub fn get_animation(id: AnimId) -> Animation {
                 (JointId::RKnee as usize, 5.0, -8.0),
             ]);
             Animation {
-                keyframes: vec![
-                    make_keyframe(crouched, 8),
-                    make_keyframe(bp, 7),
-                ],
+                keyframes: vec![make_keyframe(crouched, 8), make_keyframe(bp, 7)],
                 looping: false,
             }
         }
@@ -472,14 +466,13 @@ pub fn compute_skeleton(root_x: f32, root_y: f32, facing: f32, anim: &Animation,
 
     let mut joints = [Joint { x: 0.0, y: 0.0 }; NUM_JOINTS];
 
-    // Root (Hips) — placed at root position plus local offset
+    // Root (Hips)
     joints[0] = Joint {
         x: root_x + offsets[0].0 * facing,
         y: root_y + offsets[0].1,
     };
 
-    // FK chain: process children in order (indices 1..14)
-    // Because PARENT[i] < i for all i > 0, a single forward pass suffices.
+    // FK chain: process children in order (PARENT[i] < i for all i > 0)
     for i in 1..NUM_JOINTS {
         let parent = PARENT[i];
         joints[i] = Joint {
@@ -517,7 +510,6 @@ fn interpolate_keyframe(anim: &Animation, frame: f32) -> [(f32, f32); NUM_JOINTS
         accumulated += dur;
     }
 
-    // Past end — return last keyframe
     anim.keyframes.last().unwrap().joint_offsets
 }
 

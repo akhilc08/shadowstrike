@@ -18,6 +18,7 @@ features = [
     "Document",
     "HtmlCanvasElement",
     "CanvasRenderingContext2d",
+    "CanvasGradient",
     "KeyboardEvent",
     "Performance",
     "console",
