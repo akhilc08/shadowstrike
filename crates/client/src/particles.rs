@@ -128,6 +128,10 @@ impl ParticlePool {
                 EffectType::KnockdownSlam => 2.5 + rng * 3.0,
             };
 
+            // Per-particle color variation for richer visuals
+            let color_var = pseudo_rand(idx as f32 + 7.31);
+            let (fr, fg, fb) = apply_color_variation(element, r, g, b, color_var);
+
             self.particles[idx] = Particle {
                 x,
                 y,
@@ -135,7 +139,7 @@ impl ParticlePool {
                 vy: angle.sin() * speed,
                 lifetime: 0.0,
                 max_lifetime: max_life,
-                r, g, b,
+                r: fr, g: fg, b: fb,
                 a: 1.0,
                 size,
                 behavior,
@@ -220,8 +224,9 @@ impl ParticlePool {
     }
 }
 
+/// Base color and behavior per element + effect combination.
 fn element_style(element: Element, effect: EffectType) -> (u8, u8, u8, ParticleBehavior) {
-    // Block sparks and knockdown slams are always white/yellow
+    // Block sparks and knockdown slams have universal colors
     if effect == EffectType::BlockSpark {
         return (255, 255, 200, ParticleBehavior::Standard);
     }
@@ -231,21 +236,31 @@ fn element_style(element: Element, effect: EffectType) -> (u8, u8, u8, ParticleB
 
     match element {
         Element::Fire => {
+            let (r, g, b) = match effect {
+                EffectType::HitImpact => (255, 80, 10),
+                EffectType::SwordTrail => (255, 180, 40),
+                EffectType::IdleAmbient => (255, 120, 30),
+                EffectType::SpecialActivation => (255, 60, 0),
+                EffectType::WalkDust => (200, 100, 40),
+                _ => (255, 140, 20),
+            };
             let behavior = match effect {
-                EffectType::WalkDust => ParticleBehavior::GravityAffected,
-                EffectType::HitImpact => ParticleBehavior::GravityAffected,
-                EffectType::SpecialActivation => ParticleBehavior::Standard,
+                EffectType::WalkDust | EffectType::HitImpact => ParticleBehavior::GravityAffected,
+                EffectType::SpecialActivation => ParticleBehavior::GravityAffected,
                 _ => ParticleBehavior::Standard,
             };
-            // Vary fire colors: orange core, red/yellow edges
-            (255, 140, 20, behavior)
+            (r, g, b, behavior)
         }
         Element::Lightning => {
-            let behavior = match effect {
-                EffectType::HitImpact | EffectType::SpecialActivation => ParticleBehavior::Standard,
-                _ => ParticleBehavior::Standard,
+            let (r, g, b) = match effect {
+                EffectType::HitImpact => (240, 250, 255),      // white flash
+                EffectType::SwordTrail => (100, 180, 255),      // electric blue
+                EffectType::IdleAmbient => (140, 210, 255),     // soft cyan
+                EffectType::SpecialActivation => (200, 240, 255), // bright white-blue
+                EffectType::WalkDust => (160, 200, 240),
+                _ => (180, 210, 255),
             };
-            (180, 210, 255, behavior)
+            (r, g, b, ParticleBehavior::Standard)
         }
         Element::DarkMagic => {
             let behavior = match effect {
@@ -263,6 +278,36 @@ fn element_style(element: Element, effect: EffectType) -> (u8, u8, u8, ParticleB
                 _ => ParticleBehavior::DecelerateToStop,
             };
             (150, 240, 255, behavior)
+        }
+    }
+}
+
+/// Per-particle color variation for richer visual effects.
+fn apply_color_variation(element: Element, r: u8, g: u8, b: u8, var: f32) -> (u8, u8, u8) {
+    match element {
+        Element::Fire => {
+            // Vary from deep red-orange to bright yellow
+            let fg = ((g as f32) * (0.5 + var * 0.7)).min(255.0) as u8;
+            let fb = ((var * 50.0)).min(255.0) as u8;
+            (r, fg, fb)
+        }
+        Element::Lightning => {
+            // Vary from blue-cyan to pure white
+            let fr = ((150.0 + var * 105.0)).min(255.0) as u8;
+            let fg = ((180.0 + var * 75.0)).min(255.0) as u8;
+            (fr, fg, b)
+        }
+        Element::DarkMagic => {
+            // Vary purple hue
+            let fr = ((r as f32) * (0.6 + var * 0.6)).min(255.0) as u8;
+            let fb = ((b as f32) * (0.7 + var * 0.4)).min(255.0) as u8;
+            (fr, g, fb)
+        }
+        Element::Ice => {
+            // Vary from cyan to white
+            let fr = ((r as f32) + var * 80.0).min(255.0) as u8;
+            let fg = ((g as f32) + var * 15.0).min(255.0) as u8;
+            (fr, fg, b)
         }
     }
 }

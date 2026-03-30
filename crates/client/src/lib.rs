@@ -29,7 +29,7 @@ fn element_from_u8(v: u8) -> Element {
     }
 }
 
-/// Manages rollback netcode state: snapshots, input history, and re-simulation.
+/// Rollback netcode manager: snapshots, input history, prediction, and re-simulation.
 pub struct RollbackManager {
     /// Last 8 state snapshots for rollback
     snapshots: RingBuffer<GameState, 8>,
@@ -37,81 +37,99 @@ pub struct RollbackManager {
     p1_inputs: RingBuffer<Input, 120>,
     /// Player 2 input history (up to 120 frames)
     p2_inputs: RingBuffer<Input, 120>,
-    /// Last frame where we received confirmed P2 input
-    last_confirmed_p2_frame: u64,
-    /// Predicted input for remote player (repeat last known)
-    predicted_p2_input: Input,
+    /// Which player slot is local (1 or 2)
+    local_player: u8,
+    /// Last frame where we received confirmed remote input
+    last_confirmed_remote_frame: u64,
+    /// Predicted input for remote player (repeats last confirmed)
+    predicted_remote_input: Input,
 }
 
 impl RollbackManager {
-    pub fn new(initial_state: &GameState) -> Self {
-        let dummy_state = *initial_state;
-        RollbackManager {
-            snapshots: RingBuffer::new(dummy_state),
+    pub fn new(initial_state: &GameState, local_player: u8) -> Self {
+        let mut rm = RollbackManager {
+            snapshots: RingBuffer::new(*initial_state),
             p1_inputs: RingBuffer::new(Input(0)),
             p2_inputs: RingBuffer::new(Input(0)),
-            last_confirmed_p2_frame: 0,
-            predicted_p2_input: Input(0),
-        }
+            local_player,
+            last_confirmed_remote_frame: 0,
+            predicted_remote_input: Input(0),
+        };
+        rm.snapshots.write(0, *initial_state);
+        rm
     }
 
     pub fn save_snapshot(&mut self, frame: u64, state: &GameState) {
         self.snapshots.write(frame, *state);
     }
 
-    pub fn get_snapshot(&self, frame: u64) -> Option<&GameState> {
-        self.snapshots.read(frame)
-    }
-
-    pub fn record_p1_input(&mut self, frame: u64, input: Input) {
-        self.p1_inputs.write(frame, input);
-    }
-
-    pub fn record_p2_input(&mut self, frame: u64, input: Input) {
-        self.p2_inputs.write(frame, input);
-        if frame > self.last_confirmed_p2_frame {
-            self.last_confirmed_p2_frame = frame;
-            self.predicted_p2_input = input;
+    pub fn record_local_input(&mut self, frame: u64, input: Input) {
+        if self.local_player == 1 {
+            self.p1_inputs.write(frame, input);
+        } else {
+            self.p2_inputs.write(frame, input);
         }
     }
 
-    pub fn predict_remote_input(&self, _frame: u64) -> Input {
-        self.predicted_p2_input
+    /// Record confirmed remote input. Returns true if rollback is needed
+    /// (the frame was previously simulated with a different predicted input).
+    pub fn record_remote_input(&mut self, frame: u64, input: Input) -> bool {
+        let needs_rollback = {
+            let buffer = if self.local_player == 1 {
+                &self.p2_inputs
+            } else {
+                &self.p1_inputs
+            };
+            match buffer.read(frame) {
+                Some(&stored) => stored != input,
+                None => false,
+            }
+        };
+
+        if self.local_player == 1 {
+            self.p2_inputs.write(frame, input);
+        } else {
+            self.p1_inputs.write(frame, input);
+        }
+
+        if frame > self.last_confirmed_remote_frame {
+            self.last_confirmed_remote_frame = frame;
+            self.predicted_remote_input = input;
+        }
+
+        needs_rollback
     }
 
-    pub fn needs_rollback(&self, frame: u64, actual_input: Input) -> bool {
-        match self.p2_inputs.read(frame) {
-            Some(&predicted) => predicted != actual_input,
-            None => true,
+    /// Write predicted remote input for current frame so mispredictions
+    /// can be detected when actual input arrives later.
+    pub fn write_remote_prediction(&mut self, frame: u64) {
+        let pred = self.predicted_remote_input;
+        if self.local_player == 1 {
+            self.p2_inputs.write(frame, pred);
+        } else {
+            self.p1_inputs.write(frame, pred);
         }
     }
 
+    pub fn predict_remote_input(&self) -> Input {
+        self.predicted_remote_input
+    }
+
+    /// Rollback to from_frame snapshot and resimulate up to current_frame.
     pub fn perform_rollback(
         &mut self,
         game: &mut GameState,
         from_frame: u64,
         current_frame: u64,
-        p1_inputs: &[Input],
-        corrected_p2_input: Input,
     ) {
         if let Some(snapshot) = self.snapshots.read(from_frame) {
             game.restore_snapshot(*snapshot);
         }
-        self.p2_inputs.write(from_frame, corrected_p2_input);
-        for frame in from_frame..current_frame {
-            let idx = (frame - from_frame) as usize;
-            let p1 = if idx < p1_inputs.len() {
-                p1_inputs[idx]
-            } else {
-                self.p1_inputs.read(frame).copied().unwrap_or(Input(0))
-            };
-            let p2 = self
-                .p2_inputs
-                .read(frame)
-                .copied()
-                .unwrap_or(self.predicted_p2_input);
+        for f in from_frame..current_frame {
+            let p1 = self.p1_inputs.read(f).copied().unwrap_or(Input(0));
+            let p2 = self.p2_inputs.read(f).copied().unwrap_or(Input(0));
             game.tick(p1, p2);
-            self.snapshots.write(frame + 1, *game);
+            self.snapshots.write(f + 1, *game);
         }
     }
 }
@@ -172,8 +190,7 @@ impl ShadowStrike {
         net.create_room(ws_url);
         self.is_online = true;
         self.local_player = 1;
-        let rm = RollbackManager::new(&self.game_state);
-        self.rollback = Some(rm);
+        self.rollback = Some(RollbackManager::new(&self.game_state, 1));
         self.net = Some(net);
     }
 
@@ -183,8 +200,7 @@ impl ShadowStrike {
         net.join_room(ws_url, room_code);
         self.is_online = true;
         self.local_player = 2;
-        let rm = RollbackManager::new(&self.game_state);
-        self.rollback = Some(rm);
+        self.rollback = Some(RollbackManager::new(&self.game_state, 2));
         self.net = Some(net);
     }
 
@@ -278,58 +294,69 @@ impl ShadowStrike {
     fn run_game_tick(&mut self) {
         let frame = self.game_state.frame_number;
 
-        // Read local inputs
-        let local_input = if self.local_player == 2 {
-            input_handler::read_p2_input(&self.keys)
-        } else {
-            input_handler::read_p1_input(&self.keys)
-        };
-
         let (p1_input, p2_input) = if self.is_online {
-            // Online mode: send local input, receive/predict remote
+            // Online mode: always use WASD (P1 controls) for the local player
+            let local_input = input_handler::read_p1_input(&self.keys);
+
+            // Send local input to remote peer via relay
             if let Some(ref net) = self.net {
                 net.send_input(frame, local_input.0);
             }
 
-            // Poll for remote inputs
-            let remote_input = if let Some(ref mut net) = self.net {
-                let mut last_input = None;
-                while let Some(data) = net.poll_input() {
-                    if data.len() >= 9 {
-                        let remote_frame =
-                            u64::from_be_bytes([data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]]);
-                        let bits = data[8];
-                        if let Some(ref mut rm) = self.rollback {
-                            if self.local_player == 1 {
-                                rm.record_p2_input(remote_frame, Input(bits));
-                            } else {
-                                rm.record_p1_input(remote_frame, Input(bits));
-                            }
+            // Record local input and save state snapshot before tick
+            if let Some(ref mut rm) = self.rollback {
+                rm.record_local_input(frame, local_input);
+                rm.save_snapshot(frame, &self.game_state);
+            }
+
+            // Collect all pending remote inputs from network
+            let remote_inputs: Vec<(u64, Input)> = {
+                let mut inputs = Vec::new();
+                if let Some(ref mut net) = self.net {
+                    while let Some(data) = net.poll_input() {
+                        if data.len() >= 9 {
+                            let remote_frame = u64::from_be_bytes([
+                                data[0], data[1], data[2], data[3],
+                                data[4], data[5], data[6], data[7],
+                            ]);
+                            inputs.push((remote_frame, Input(data[8])));
                         }
-                        last_input = Some(Input(bits));
                     }
                 }
-                last_input
-            } else {
-                None
+                inputs
             };
 
-            // Save snapshot and record local input
+            // Process remote inputs against rollback manager, detect mispredictions
+            let mut earliest_correction: Option<u64> = None;
             if let Some(ref mut rm) = self.rollback {
-                rm.save_snapshot(frame, &self.game_state);
-                if self.local_player == 1 {
-                    rm.record_p1_input(frame, local_input);
-                } else {
-                    rm.record_p2_input(frame, local_input);
+                for &(remote_frame, remote_input) in &remote_inputs {
+                    let needs = rm.record_remote_input(remote_frame, remote_input);
+                    if needs && remote_frame < frame {
+                        earliest_correction = Some(match earliest_correction {
+                            Some(f) => f.min(remote_frame),
+                            None => remote_frame,
+                        });
+                    }
                 }
             }
 
-            let predicted = remote_input.unwrap_or_else(|| {
-                self.rollback
-                    .as_ref()
-                    .map(|rm| rm.predict_remote_input(frame))
-                    .unwrap_or(Input(0))
-            });
+            // Perform rollback and resimulation if misprediction detected
+            if let Some(correction_frame) = earliest_correction {
+                if let Some(ref mut rm) = self.rollback {
+                    rm.perform_rollback(&mut self.game_state, correction_frame, frame);
+                }
+            }
+
+            // Predict remote input for this frame and store in buffer
+            let predicted = self
+                .rollback
+                .as_ref()
+                .map(|rm| rm.predict_remote_input())
+                .unwrap_or(Input(0));
+
+            if let Some(ref mut rm) = self.rollback {
+                rm.write_remote_prediction(frame);
+            }
 
             if self.local_player == 1 {
                 (local_input, predicted)
@@ -379,38 +406,49 @@ impl ShadowStrike {
             let anim = get_animation(anim_id);
             self.anim_states[i].advance(&anim);
 
+            // Elemental particle theme: P1=Fire, P2=Lightning
+            let visual_elem = if i == 0 {
+                Element::Fire
+            } else {
+                Element::Lightning
+            };
+
             // Emit particles on action changes
             let prev = self.prev_actions[i];
             if anim_id != prev {
                 let px = self.game_state.players[i].x.to_f32();
                 let py = self.game_state.players[i].y.to_f32();
-                let elem = self.game_state.players[i].element;
 
                 match action {
                     PlayerAction::Uppercut => {
                         self.particles
-                            .emit(px, py - 30.0, elem, EffectType::SpecialActivation);
+                            .emit(px, py - 30.0, visual_elem, EffectType::SpecialActivation);
                         self.particles
-                            .emit(px, py - 30.0, elem, EffectType::SwordTrail);
+                            .emit(px, py - 30.0, visual_elem, EffectType::SwordTrail);
                     }
                     PlayerAction::LightAttack1
                     | PlayerAction::LightAttack2
                     | PlayerAction::LightAttack3
                     | PlayerAction::HeavyAttack
                     | PlayerAction::AerialAttack => {
-                        self.particles.emit(px, py - 30.0, elem, EffectType::SwordTrail);
+                        self.particles
+                            .emit(px, py - 30.0, visual_elem, EffectType::SwordTrail);
                     }
                     PlayerAction::Hitstun { .. } => {
-                        self.particles.emit(px, py - 30.0, elem, EffectType::HitImpact);
+                        self.particles
+                            .emit(px, py - 30.0, visual_elem, EffectType::HitImpact);
                     }
                     PlayerAction::Blockstun { .. } => {
-                        self.particles.emit(px, py - 40.0, elem, EffectType::BlockSpark);
+                        self.particles
+                            .emit(px, py - 40.0, visual_elem, EffectType::BlockSpark);
                     }
                     PlayerAction::Knockdown { .. } => {
-                        self.particles.emit(px, py, elem, EffectType::KnockdownSlam);
+                        self.particles
+                            .emit(px, py, visual_elem, EffectType::KnockdownSlam);
                     }
                     PlayerAction::WalkForward | PlayerAction::WalkBack => {
-                        self.particles.emit(px, py, elem, EffectType::WalkDust);
+                        self.particles
+                            .emit(px, py, visual_elem, EffectType::WalkDust);
                     }
                     _ => {}
                 }
@@ -419,12 +457,17 @@ impl ShadowStrike {
         }
 
         // Idle ambient particles (occasional)
-        if self.game_state.frame_number.is_multiple_of(15) {
+        if self.game_state.frame_number % 15 == 0 {
             for i in 0..2 {
                 let px = self.game_state.players[i].x.to_f32();
                 let py = self.game_state.players[i].y.to_f32();
-                let elem = self.game_state.players[i].element;
-                self.particles.emit(px, py - 40.0, elem, EffectType::IdleAmbient);
+                let visual_elem = if i == 0 {
+                    Element::Fire
+                } else {
+                    Element::Lightning
+                };
+                self.particles
+                    .emit(px, py - 40.0, visual_elem, EffectType::IdleAmbient);
             }
         }
 

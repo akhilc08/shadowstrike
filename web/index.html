@@ -210,8 +210,13 @@
   <div id="net-indicator"></div>
 
   <div id="controls">
-    P1: WASD move &middot; Z light &middot; X heavy &middot; C special &middot; V block<br>
-    P2: Arrows move &middot; J light &middot; K heavy &middot; L special &middot; ; block
+    <span id="controls-local">
+      P1: WASD move &middot; Z light &middot; X heavy &middot; C special &middot; V block<br>
+      P2: Arrows move &middot; J light &middot; K heavy &middot; L special &middot; ; block
+    </span>
+    <span id="controls-online" style="display:none">
+      WASD move &middot; Z light &middot; X heavy &middot; C special &middot; V block
+    </span>
   </div>
 
   <script type="module">
@@ -363,6 +368,12 @@
       document.getElementById('select-screen').style.display = 'none';
       const canvas = document.getElementById('game-canvas');
       canvas.style.display = 'block';
+
+      // Show appropriate controls text
+      if (gameMode === 'online') {
+        document.getElementById('controls-local').style.display = 'none';
+        document.getElementById('controls-online').style.display = '';
+      }
 
       document.addEventListener('keydown', e => {
         e.preventDefault();
