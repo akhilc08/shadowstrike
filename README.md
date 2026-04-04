@@ -1,6 +1,8 @@
 # ShadowStrike
 
-A browser-based 2D fighting game built in Rust/WASM with rollback netcode.
+Real-time multiplayer fighting game in Rust/WASM — rollback netcode, fixed-point arithmetic, frame-perfect determinism over unreliable networks.
+
+**304-byte game states · O(1) ring buffer rollback · 50ms P95 latency · deployed to Cloudflare + Fly.io**
 
 ## Architecture
 
@@ -14,6 +16,23 @@ A browser-based 2D fighting game built in Rust/WASM with rollback netcode.
 - **Ring buffer snapshots** allow O(1) save/restore for rollback netcode with zero allocation.
 - **CRC32 checksums** on game state enable desync detection between peers.
 - **Combo scaling** with hitstun decay prevents infinite combos (max 15 hits).
+
+## Deployment
+
+CI/CD via GitHub Actions:
+
+- **WASM client** → Cloudflare Pages (edge-cached, global CDN)
+- **WebSocket relay** → Fly.io (anycast routing, low-latency matchmaking)
+
+```
+push to main
+  → cargo test --workspace
+  → wasm-pack build --release
+  → Cloudflare Pages deploy (WASM + web assets)
+  → fly deploy (relay server)
+```
+
+---
 
 ## Running Locally
 
